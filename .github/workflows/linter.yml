@@ -1,0 +1,66 @@
+---
+name: Lint Code Base
+on: [push, pull_request]
+
+permissions: {}
+
+jobs:
+  # JOB 1: Attempt to fix issues and push changes
+  fix-and-commit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      statuses: write
+      pull-requests: write           # Needed to post the summary you saw failing
+      issues: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Super-Linter with Fixes
+        uses: super-linter/super-linter@v7 # Use v7 or v8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FIX_SHELL_SHFMT: true
+          FIX_YAML_PRETTIER: true
+          # VALIDATE_ALL_CODEBASE: false
+          FILTER_REGEX_EXCLUDE: '.*\.github/workflows/.*'    # Ignore workflow files
+          LOG_LEVEL: NOTICE
+
+      - name: Commit and push linting fixes
+        if: >
+          github.event_name == 'pull_request' &&
+          github.ref_name != github.event.repository.default_branch &&
+          (success() || failure() )
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          branch: ${{ github.head_ref || github.ref_name }}
+          commit_message: "chore: fix linting issues [skip ci]"
+          commit_user_name: super-linter
+          commit_user_email: super-linter@super-linter.dev
+
+          skip_checkout: true
+          file_pattern: ':!super-linter-output/ :!github_conf/ .'
+
+  # JOB 2: The final check that gives the "Green Checkmark"
+  verify-codebase:
+    # Wait for the fixes to be pushed
+    needs: fix-and-commit
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # We don't need to specify a token here; it just reads the latest commit
+
+      - name: Final Lint Check
+        uses: super-linter/super-linter@v7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATE_ALL_CODEBASE: false
+          # In this job, we turn FIX mode OFF to see if anything is still broken
+          FILTER_REGEX_EXCLUDE: '.*\.github/workflows/.*'

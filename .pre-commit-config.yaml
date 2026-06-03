@@ -1,0 +1,17 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0 # Use the ref you want to point at
+    hooks:
+      - id: check-added-large-files # default: 500kB
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: double-quote-string-fixer
+      - id: name-tests-test
+      - id: pretty-format-json
+      - id: requirements-txt-fixer
+      - id: check-json
+      - id: check-yaml
+      - id: check-toml
+      - id: check-xml

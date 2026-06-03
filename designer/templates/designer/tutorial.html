@@ -1,0 +1,222 @@
+{% extends "designer/base.html" %}
+{% load static %}
+{% block content %}
+
+<!-- Intro -->
+<div class="card page-card intro-card">
+    <h2>How this tool works</h2>
+    <p>
+        This tutorial explains the biology behind CRISPR base editing and walks you through
+        how to use this designer step by step.
+    </p>
+</div>
+
+<!-- Section 1: What is Base Editing -->
+<div class="card page-card">
+    <h2>1. What is CRISPR base editing?</h2>
+    <p>
+        Classic CRISPR-Cas9 cuts both strands of DNA. <strong>Base editors</strong> are more surgical: instead of cutting, they chemically
+        convert one DNA base into another, directly at the target site, without breaking the
+        double helix.
+    </p>
+    <p>
+        This makes base editors ideal for studying or correcting <strong>point mutations</strong>
+        which are the cause of many inherited diseases.
+    </p>
+
+    <!-- Visual: CBE vs ABE -->
+    <div class="tutorial-visual">
+        <img src="{% static 'designer/images/crispr_base_editing_pic.png' %}"
+             alt="Base editing mechanism"
+             class="tutorial-img"
+
+        <p style="max-width: 1000px; width: 100%; border-radius: 12px;">
+            Source: <a href="https://www.nature.com/articles/s41573-020-0084-6/figures/1" target="_blank">Original</a>
+        </p>
+    </div>
+
+    <p>
+        Both editors, the cytosine base editor (CBE) and the adenine base editor (ABE), are fused to a Cas9 nickase that is guided to the exact genomic
+        location by a <strong>guide RNA</strong>. The deaminase enzyme then converts the
+        target base within a small editing window — typically positions 4–8 of the 20-nt
+        protospacer.
+    </p>
+</div>
+
+<!-- Section 2: The editing window -->
+<div class="card page-card">
+    <h2>2. The editing window</h2>
+    <p>
+        Not every base in the protospacer can be edited. The deaminase only reaches bases
+        that fall within a defined <strong>editing window</strong>, counted from the 5′ end of
+        the guide RNA (position 1) toward the PAM (position 20).
+    </p>
+
+    <div class="tutorial-visual">
+        <img src="{% static 'designer/images/editing_window_pic.png' %}"
+             alt="Editing window"
+             class="tutorial-img"
+
+        <p style="max-width: 1000px; width: 100%; border-radius: 12px;">
+            Source: <a href="http://www.rgenome.net/static/be_analyzer_upper.png" target="_blank">Original</a>
+        </p>
+    </div>
+
+    <p>
+        A guide RNA is only useful for base editing if the target base (A for ABE, C for CBE)
+        falls within this window <em>and</em> a suitable NGG PAM sequence exists nearby.
+        This is one reason not every amino acid position can be targeted.
+    </p>
+</div>
+
+<!-- Section 3: AlphaMissense -->
+<div class="card page-card">
+    <h2>3. Why AlphaMissense?</h2>
+    <p>
+        Not all amino acid changes are clinically relevant. <strong>AlphaMissense</strong> is a
+        deep-learning model from Google DeepMind that predicts the pathogenicity of missense
+        variants — single amino acid substitutions — on a scale from 0 (benign) to 1 (likely
+        pathogenic).
+    </p>
+    <p>
+        This tool uses AlphaMissense scores to <strong>rank guide RNAs</strong>: positions where
+        the base edit would introduce a highly pathogenic variant are shown first. This helps you
+        focus your experiments on the most disease-relevant targets.
+    </p>
+
+    <div class="tutorial-visual">
+        <svg width="100%" viewBox="0 0 680 100" role="img">
+            <title>AlphaMissense score scale from benign to pathogenic</title>
+            <desc>Horizontal bar showing score from 0 (benign, green) to 1 (pathogenic, red) with threshold marker</desc>
+            <!-- Score bar -->
+            <defs>
+                <linearGradient id="score-grad" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#639922"/>
+                    <stop offset="45%" stop-color="#EF9F27"/>
+                    <stop offset="100%" stop-color="#E24B4A"/>
+                </linearGradient>
+            </defs>
+            <rect x="80" y="30" width="520" height="24" rx="12" fill="url(#score-grad)" opacity="0.85"/>
+            <!-- Threshold marker at ~0.6 (x = 80 + 0.6*520 = 392) -->
+            <line x1="392" y1="22" x2="392" y2="62" stroke="var(--color-text-primary)" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <text class="ts" x="392" y="76" text-anchor="middle">default threshold 0.6</text>
+            <!-- Labels -->
+            <text class="ts" x="80" y="20" text-anchor="middle">0</text>
+            <text class="ts" x="600" y="20" text-anchor="middle">1</text>
+            <text class="ts" x="80" y="76" text-anchor="start">benign</text>
+            <text class="ts" x="600" y="76" text-anchor="end">pathogenic</text>
+        </svg>
+    </div>
+</div>
+
+<!-- Section 4: App walkthrough -->
+<div class="card page-card">
+    <h2>4. How to use this tool</h2>
+
+    <div class="tutorial-steps">
+
+        <div class="tutorial-step">
+            <div class="step-number">1</div>
+            <div class="step-content">
+                <h3>Enter a UniProt or Ensembl ID</h3>
+                <p>
+                    Find your protein of interest on
+                    <a href="https://www.uniprot.org" target="_blank">uniprot.org</a>
+                    and copy the accession (e.g. <code>P04637</code> for TP53).
+                    You can also enter an Ensembl transcript ID starting with <code>ENST</code>.
+                    The tool will automatically retrieve the coding sequence.
+                </p>
+            </div>
+        </div>
+
+        <div class="tutorial-step">
+            <div class="step-number">2</div>
+            <div class="step-content">
+                <h3>Set the AlphaMissense threshold</h3>
+                <p>
+                    Only positions where at least one possible base edit leads to a variant
+                    with an AlphaMissense score above your threshold will be shown. The default
+                    is 0.6 — a good starting point that filters out likely benign variants while
+                    keeping most pathogenic candidates.
+                </p>
+            </div>
+        </div>
+
+        <div class="tutorial-step">
+            <div class="step-number">3</div>
+            <div class="step-content">
+                <h3>Choose your editor</h3>
+                <p>
+                    Select <strong>ABE</strong> for A→G edits, <strong>CBE</strong> for C→T edits,
+                    or <strong>ABE & CBE</strong> to see candidates for both. The tool will only
+                    show positions where the codon contains an editable base (A for ABE, C for CBE)
+                    and a compatible guide RNA can be designed.
+                </p>
+            </div>
+        </div>
+
+
+        <div class="tutorial-step">
+            <div class="step-number">4</div>
+            <div class="step-content">
+                <h3>Choose your PAM sequence</h3>
+                <p>
+                    <strong>NGG</strong> is the standard SpCas9 PAM.
+                    However, if you prefer you can also select <strong>NG</strong> to find more guide RNA candidates or <strong>NAG</strong>.
+                </p>
+            </div>
+        </div>
+
+        <div class="tutorial-step">
+            <div class="step-number">5</div>
+            <div class="step-content">
+                <h3>Guide RNAs at multiple positions</h3>
+                <p>
+                    A single guide RNA sequence can sometimes edit more than one amino acid position.
+                    <strong>Only uniquely mapping guides</strong> hides guides that map to multiple positions.
+                    <strong>Best position per guide</strong> keeps one row per guide (highest AlphaMissense score) and shows a
+                    <strong>×N</strong> badge when that guide maps to N positions.
+                    <strong>All occurrences, grouped</strong> lists every position; identical guides are sorted together.
+                    Row colours appear only when two or more rows with the same guide are visible (filters may hide partners).
+                </p>
+            </div>
+        </div>
+
+        <div class="tutorial-step">
+            <div class="step-number">6</div>
+            <div class="step-content">
+                <h3>Interpret the results</h3>
+                <p>
+                    Results are sorted by AlphaMissense score, highest first. Each row shows one
+                    guide RNA for one amino acid position. The <strong>Guide RNA Outcomes</strong>
+                    column lists all possible amino acid changes this guide could produce, with
+                    pathogenic variants marked with <code>*</code> and their score in brackets.
+                    Use this to identify guides with clean, specific edits.
+                </p>
+            </div>
+        </div>
+
+        <div class="tutorial-step">
+            <div class="step-number">7</div>
+            <div class="step-content">
+                <h3>Download your results</h3>
+                <p>
+                    Use the <strong>Download CSV</strong> or <strong>Download Excel</strong> buttons
+                    on the results page to export your guide RNA candidates for further analysis or
+                    ordering.
+                </p>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- CTA -->
+<div class="card page-card" style="text-align: center;">
+    <h2>Ready to start?</h2>
+    <p>Head back to the home page and run your first analysis.</p>
+    <a href="{% url 'home' %}" class="btn">Go to home page</a>
+</div>
+
+
+{% endblock %}

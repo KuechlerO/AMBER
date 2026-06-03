@@ -1,0 +1,58 @@
+<!-- there are 2 different Errors: Input/Server Error -->
+
+
+{% extends "designer/base.html" %}
+
+{% block content %}
+<div class="card page-card error-card">
+
+    {% if error_type == "user" %} <!-- User Error -->
+
+        <h2 class="error-heading error-heading-user">Input Error</h2>
+
+        <p>
+            There seems to be an issue with your input.
+        </p>
+
+        <div class="summary-box error-box error-box-user">
+            <p>
+                <strong>Possible cause:</strong><br>
+                The provided <strong>UniProt ID</strong> is invalid or could not be processed.
+            </p>
+
+            <p>
+                Please check your input (e.g. <code>P04439</code>) and try again.
+            </p>
+        </div>
+
+    {% else %} <!-- Server Error -->
+
+        <h2 class="error-heading error-heading-server">Server Error</h2>
+
+        <p>
+            An unexpected error occurred while processing your request.
+        </p>
+
+        <div class="summary-box error-box error-box-server">
+            <p>
+                This is likely a problem on our side (server or analysis pipeline).
+            </p>
+
+            <p>
+                Please try again later or contact the developers.
+            </p>
+        </div>
+
+        <div class="error-details">
+            <p><strong>Technical details:</strong></p>
+            <pre class="error-pre">{{ error }}</pre>
+        </div>
+
+    {% endif %}
+
+    <div class="actions actions-spaced">
+        <a class="btn secondary" href="{% url 'home' %}">Back to Home</a>
+    </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,242 @@
+{% extends "designer/base.html" %}
+
+{% block content %}
+
+<!-- Discription text for website -->
+<div class="card page-card intro-card">
+    <h2>Design of Base-Editing guide RNAs</h2>
+    <p>
+        The further analysis will identify biologically relevant amino acid substitutions
+        and corresponding base-editing-compatible guide RNAs for your chosen protein.
+    </p>
+    <p>
+        All amino acid substitutions will be evalutated and ranked using <strong>AlphaMissense</strong>.
+    </p>
+    <p>
+        As editors, <strong>ABE</strong> and <strong>CBE</strong> are both supported.
+        As PAM sequences, <strong>NGG</strong>, <strong>NG</strong> and <strong>NAG</strong> can be chosen.
+    </p>
+    <p>
+        Guide RNAs that target multiple positions can be filtered, deduplicated, or shown in full (see options below).
+    </p>
+    <p>
+        The Guide RNAs that span exon-intron boundaries are automatically excluded, as these would not function correctly in the processed mRNA.
+    </p>
+</div>
+
+<!-- Formular für User -->
+<div class="card page-card form-card">
+    <h2>Start analysis</h2>
+
+    <form method="POST" action="{% url 'loading' %}">
+        {% csrf_token %}
+
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="uniprot_id">UniProt ID or Ensembl ID</label>
+                <div class="input-with-action">
+                    <input
+                        type="text"
+                        id="uniprot_id"
+                        name="uniprot_id"
+                        placeholder="e.g. P04439"
+                        required
+                    >
+                    <button type="button" class="btn btn-example" id="example-btn" title="Fill with example UniProt ID (HLA-A)">
+                        Example
+                    </button>
+                </div>
+                <small class="help-text">
+                    Enter a UniProt protein ID or Ensembl ID for the target protein
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label for="alpha_threshold">AlphaMissense Threshold</label>
+
+                <div class="slider-container">
+                    <input
+                        type="range"
+                        id="alpha_slider"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value="0.6"
+                        oninput="document.getElementById('alpha_threshold').value = this.value"
+                    >
+
+                    <input
+                        type="number"
+                        id="alpha_threshold"
+                        name="alpha_threshold"
+                        value="0.6"
+                        step="0.01"
+                        min="0"
+                        max="1"
+                        oninput="document.getElementById('alpha_slider').value = this.value"
+                    >
+                </div>
+
+                <small class="help-text">
+                    Only mutations with a score above this threshold will be shown
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label for="top_sgrnas">Number of top guide RNAs per position</label>
+                <input
+                    type="number"
+                    id="top_sgrnas"
+                    name="top_sgrnas"
+                    value="5"
+                    min="1"
+                    max="50"
+                >
+                <small class="help-text">
+                    Choose how many top-ranked guide RNA candidates you want to see for each position
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label>Editing Window</label>
+
+                <div class="range-inputs">
+                    <input
+                        type="number"
+                        id="window_min"
+                        name="window_min"
+                        value="4"
+                        min="1"
+                        max="20"
+                    >
+
+                    <span class="range-separator">-</span>
+
+                    <input
+                        type="number"
+                        id="window_max"
+                        name="window_max"
+                        value="8"
+                        min="1"
+                        max="20"
+                    >
+                </div>
+
+                <small class="help-text">
+                    Choose editing window positions in guide RNA
+                </small>
+            </div>
+
+
+            <!-- ZEILE 1: Editor links, PAM rechts -->
+            <div class="form-group">
+                <label>Editor</label>
+                <div class="editor-toggle-group">
+                    <label class="editor-option">
+                        <input type="radio" name="editor" value="ABE" checked>
+                        <span>ABE</span>
+                    </label>
+                    <label class="editor-option">
+                        <input type="radio" name="editor" value="CBE">
+                        <span>CBE</span>
+                    </label>
+                    <label class="editor-option">
+                        <input type="radio" name="editor" value="BOTH">
+                        <span>ABE & CBE</span>
+                    </label>
+                </div>
+                <small class="help-text">Select which base editor(s) should be used</small>
+            </div>
+
+            <div class="form-group">
+                <label>PAM Sequence</label>
+                <div class="editor-toggle-group">
+                    <label class="editor-option" title="Standard SpCas9 PAM. Most commonly used and well-characterized. Requires two G's after the target.">
+                        <input type="radio" name="pam_type" value="NGG" checked>
+                        <span>NGG</span>
+                    </label>
+                    <label class="editor-option" title="SpRY variant. Only requires one G. Finds more candidates but may have higher off-target activity.">
+                        <input type="radio" name="pam_type" value="NG">
+                        <span>NG</span>
+                    </label>
+                    <label class="editor-option" title="Alternative SpCas9 PAM. Lower efficiency than NGG but expands targeting range to NAG sites.">
+                        <input type="radio" name="pam_type" value="NAG">
+                        <span>NAG</span>
+                    </label>
+                </div>
+                <small class="help-text">NGG is standard</small>
+            </div>
+
+        </div> <!-- closes form-grid -->
+
+        <!-- ZEILE 2: Duplicate Guide RNA handling - volle Breite -->
+        <div class="form-group" style="margin-top: 1.15rem;">
+            <label>Guide RNAs at multiple positions</label>
+            <div class="column-picker mode-picker">
+                <label class="column-picker-item">
+                    <input type="radio" name="duplicate_mode" value="unique">
+                    <span>Only uniquely mapping guides</span>
+                </label>
+                <label class="column-picker-item">
+                    <input type="radio" name="duplicate_mode" value="best" checked>
+                    <span>Best position per guide</span>
+                </label>
+                <label class="column-picker-item">
+                    <input type="radio" name="duplicate_mode" value="group">
+                    <span>All occurrences, grouped</span>
+                </label>
+            </div>
+            <small class="help-text">
+                The same guide sequence can edit more than one amino-acid position.
+                Uniquely mapping guides appear at a single position only.
+                Multi-site guides get a <strong>×N</strong> badge (N = number of positions).
+                Row colours in grouped mode only appear when two or more rows with the same guide are visible
+                (e.g. score filters may hide partners).
+            </small>
+        </div>
+
+        <!-- Run analysis - zentriert -->
+        <div class="form-actions" style="display: flex; justify-content: center; margin-top: 2rem;">
+            <button type="submit" class="btn" style="padding: 1.1rem 3rem; font-size: 1.1rem;" onclick="this.innerText='Running analysis...';">
+                Run analysis
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const exampleBtn = document.getElementById("example-btn");
+    const uniprotInput = document.getElementById("uniprot_id");
+    if (exampleBtn && uniprotInput) {
+        exampleBtn.addEventListener("click", function () {
+            uniprotInput.value = "P04439";
+            uniprotInput.focus();
+        });
+    }
+
+    const minInput = document.querySelector('input[name="window_min"]');
+    const maxInput = document.querySelector('input[name="window_max"]');
+
+    function validate() {
+        let min = parseInt(minInput.value);
+        let max = parseInt(maxInput.value);
+
+        if (min > max) {
+            maxInput.setCustomValidity("Must be greater than or equal to lower bound");
+        } else {
+            maxInput.setCustomValidity("");
+        }
+
+        if (max < min) {
+            minInput.setCustomValidity("Must be less than or equal to upper bound");
+        } else {
+            minInput.setCustomValidity("");
+        }
+    }
+
+    minInput.addEventListener("input", validate);
+    maxInput.addEventListener("input", validate);
+});
+</script>
+{% endblock %}

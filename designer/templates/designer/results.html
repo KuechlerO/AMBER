@@ -1,0 +1,498 @@
+{% extends "designer/base.html" %}
+
+{% block content %}
+<div class="card page-card results-card">
+    <h2>Results</h2>
+    <p>Below are the ranked guide RNA candidates for the selected input parameters.</p>
+
+    <div class="summary-box summary-box-bubbly">
+        <div class="summary-grid">
+            <div class="summary-item">
+                {% if form_data.uniprot_id|slice:":4" == "ENST" %}
+                    <span class="summary-label">Ensembl ID</span>
+                {% else %}
+                    <span class="summary-label">UniProt ID</span>
+                {% endif %}
+                <span class="summary-value">{{ form_data.uniprot_id }}</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">Editor</span>
+                <span class="summary-value">
+                    <span class="editor-badge">{{ form_data.editor_display }}</span>
+                </span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">PAM</span>
+                <span class="summary-value">
+                    <span class="pam-badge">{{ form_data.pam_type }}</span>
+                </span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">AlphaMissense Threshold</span>
+                <span class="summary-value">{{ form_data.alpha_threshold }}</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">Top Guide RNAs</span>
+                <span class="summary-value">{{ form_data.top_sgrnas }}</span>
+            </div>
+        </div>
+    </div>
+
+    <h3 class="results-subtitle">
+        In total: {{ guide_count }} guide RNA candidates found across {{ position_count }} editable positions
+    </h3>
+    <p class="duplicate-display-note help-text">
+        A <span class="multi-bind-badge multi-bind-badge-inline">×N</span> badge at the start of a row means that guide maps to N amino-acid positions (from the full analysis).
+        In <strong>grouped</strong> mode, row colours appear only when two or more rows with the same guide sequence are visible in the table
+        (score or column filters may hide partners).
+    </p>
+
+    <div class="actions">
+        <a class="btn secondary" href="{% url 'home' %}">New Analysis</a>
+        <a class="btn" href="{% url 'download_excel' %}">Download Excel</a>
+        <a class="btn" onclick="downloadTableAsCSV()" style="cursor:pointer;">Download CSV</a>
+    </div>
+
+
+    <div class="display-options" style="margin-top: 25px; margin-bottom: 25px;">
+        <button type="button" class="toggle-btn display-options-toggle" onclick="toggleDisplayOptions(this)">
+            Change display &amp; filters
+        </button>
+
+        <div id="display-options-panel" class="display-options-panel" hidden>
+            <form id="display-settings-form" method="POST" action="{% url 'results' %}">
+                {% csrf_token %}
+                <input type="hidden" name="refresh_only" value="1">
+
+                <input type="hidden" name="uniprot_id" value="{{ form_data.uniprot_id }}">
+                <input type="hidden" name="alpha_threshold" value="{{ form_data.alpha_threshold }}">
+                <input type="hidden" name="top_sgrnas" value="{{ form_data.top_sgrnas }}">
+                <input type="hidden" name="window_min" value="{{ form_data.window_min }}">
+                <input type="hidden" name="window_max" value="{{ form_data.window_max }}">
+                <input type="hidden" name="editor" value="{{ form_data.editor }}">
+                <input type="hidden" name="duplicate_mode" value="{{ form_data.duplicate_mode }}">
+                <input type="hidden" name="pam_type" value="{{ form_data.pam_type }}">
+
+                <section class="display-options-section">
+                    <h4 class="display-options-heading">AlphaMissense score filter</h4>
+                    <div class="filter-inline">
+                        <label class="filter-radio">
+                            <input type="radio" name="score_filter_mode" value="all"
+                                   {% if form_data.score_filter_mode == 'all' %}checked{% endif %}>
+                            Show all variants
+                        </label>
+                        <label class="filter-radio">
+                            <input type="radio" name="score_filter_mode" value="above"
+                                   {% if form_data.score_filter_mode != 'all' and form_data.score_filter_mode != 'below' %}checked{% endif %}>
+                            Score at or above cutoff
+                        </label>
+                        <label class="filter-radio">
+                            <input type="radio" name="score_filter_mode" value="below"
+                                   {% if form_data.score_filter_mode == 'below' %}checked{% endif %}>
+                            Score below cutoff
+                        </label>
+                    </div>
+                    <div class="score-cutoff-row">
+                        <label for="display_score_cutoff">Cutoff value</label>
+                        <input type="number" id="display_score_cutoff" name="display_score_cutoff"
+                               class="score-cutoff-input"
+                               value="{{ form_data.display_score_cutoff|default:form_data.alpha_threshold }}"
+                               step="0.01" min="0" max="1">
+                    </div>
+                    <p class="help-text">
+                        Analysis threshold from home: {{ form_data.alpha_threshold }}.
+                        Pick a mode and cutoff, then apply (fast, no new analysis).
+                    </p>
+                </section>
+
+                <section class="display-options-section">
+                    <div class="column-picker-header">
+                        <h4 class="display-options-heading">Displayed columns</h4>
+                        <span class="column-picker-actions">
+                            <button type="button" class="link-btn" id="columns-select-all">All</button>
+                            <span aria-hidden="true">·</span>
+                            <button type="button" class="link-btn" id="columns-select-none">None</button>
+                        </span>
+                    </div>
+                    <div class="column-picker" id="column-picker">
+                        {% for val, label in display_columns_map %}
+                            <label class="column-picker-item">
+                                <input type="checkbox" name="columns" value="{{ val }}"
+                                       class="column-toggle"
+                                       {% if val in form_data.selected_columns %}checked{% endif %}>
+                                <span>{{ label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                    <p class="help-text">Columns update instantly. Use "Apply display settings" to sync Excel export.</p>
+                </section>
+
+                <div class="display-options-footer">
+                    <button type="submit" class="btn" id="apply-display-settings">
+                        Apply display settings
+                    </button>
+                </div>
+
+            </form>
+        </div>
+    </div>
+
+
+    <div class="table-shell">
+        <table class="results-table">
+            <thead>
+                <tr>
+                    <th class="row-indicator-col" scope="col" aria-label="Multi-site guide"></th>
+                    {% for col_key, col_label in display_columns_map %}
+                        <th class="result-col col-{{ col_key }}{% if col_key not in form_data.selected_columns %} col-hidden{% endif %} {% if col_key == 'position' or col_key == 'alpha_score' or col_key == 'avg_alpha_score' or col_key == 'editor_used' %}sortable{% endif %}"
+                            data-key="{{ col_key }}">
+
+                            {{ col_label }}
+
+                            {% comment %} showing icon only if column is sortable {% endcomment %}
+                            {% if col_key == 'position' or col_key == 'alpha_score' or col_key == 'avg_alpha_score' or col_key == 'editor_used' %}
+                                {% if col_key == "position" %} ▲{% else %} •{% endif %}
+                            {% endif %}
+                        </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in results %}
+                <tr data-sgrna-seq="{{ row.sgrna_seq }}" data-binding-count="{{ row.binding_count|default:1 }}">
+                    <td class="row-indicator-col">
+                        {% if row.binding_count > 1 %}
+                            <span class="multi-bind-badge" title="Maps to {{ row.binding_count }} positions: {% for p in row.binding_positions %}{{ p }}{% if not forloop.last %}, {% endif %}{% endfor %}">×{{ row.binding_count }}</span>
+                        {% endif %}
+                    </td>
+                    {% for col_key, col_label in display_columns_map %}
+                        <td class="result-col col-{{ col_key }}{% if col_key not in form_data.selected_columns %} col-hidden{% endif %}" data-col="{{ col_key }}">
+                            {% if col_key == "position" %}{{ row.position }}
+                            {% elif col_key == "wt_codon" %}<span class="sequence-chip">{{ row.wt_codon }}</span>
+                            {% elif col_key == "wt_aa" %}{{ row.wt_aa }}
+                            {% elif col_key == "mut_aa" %}{{ row.mut_aa }}
+                            {% elif col_key == "alpha_score" %}<span class="score-cell">{{ row.alpha_score|floatformat:3 }}</span>
+                            {% elif col_key == "editor_used" %}<span class="editor-badge">{{ row.editor_used }}</span>
+                            {% elif col_key == "sgrna_seq" %}<span class="mono">{{ row.sgrna_seq }}</span>
+                            {% elif col_key == "protospacer" %}<span class="mono">{{ row.protospacer }}</span>
+                            {% elif col_key == "pam" %}<span class="pam-badge">{{ row.pam }}</span>
+                            {% elif col_key == "strand" %}<span class="strand-badge">{{ row.strand }}</span>
+                            {% elif col_key == "target_position" %}{{ row.target_position|join:", " }}
+                            {% elif col_key == "outcomes" %}
+                                <div class="mono outcomes-cell">
+                                    {% for o in row.outcomes %}<div class="outcome-item">{{ o }}</div>{% endfor %}
+                                </div>
+                            {% elif col_key == "avg_alpha_score" %}
+                                <span class="score-cell">{{ row.avg_alpha_score|floatformat:3 }}</span>
+                            {% endif %}
+                        </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+<script>
+function toggleDisplayOptions(button) {
+    const panel = document.getElementById("display-options-panel");
+    const isHidden = panel.hasAttribute("hidden");
+    if (isHidden) {
+        panel.removeAttribute("hidden");
+        button.innerText = "Hide display & filters";
+    } else {
+        panel.setAttribute("hidden", "hidden");
+        button.innerText = "Change display & filters";
+    }
+}
+
+function setColumnVisible(colKey, visible) {
+    document.querySelectorAll(".result-col.col-" + colKey).forEach(function (el) {
+        el.classList.toggle("col-hidden", !visible);
+    });
+}
+
+function applyColumnVisibilityFromPicker() {
+    document.querySelectorAll(".column-toggle").forEach(function (cb) {
+        setColumnVisible(cb.value, cb.checked);
+    });
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll(".column-toggle").forEach(function (cb) {
+        cb.addEventListener("change", function () {
+            setColumnVisible(cb.value, cb.checked);
+        });
+    });
+
+    const selectAll = document.getElementById("columns-select-all");
+    const selectNone = document.getElementById("columns-select-none");
+    if (selectAll) {
+        selectAll.addEventListener("click", function () {
+            document.querySelectorAll(".column-toggle").forEach(function (cb) {
+                cb.checked = true;
+                setColumnVisible(cb.value, true);
+            });
+        });
+    }
+    if (selectNone) {
+        selectNone.addEventListener("click", function () {
+            document.querySelectorAll(".column-toggle").forEach(function (cb) {
+                cb.checked = false;
+                setColumnVisible(cb.value, false);
+            });
+        });
+    }
+
+    const applyBtn = document.getElementById("apply-display-settings");
+    if (applyBtn) {
+        applyBtn.closest("form").addEventListener("submit", function () {
+            applyBtn.innerText = "Applying...";
+        });
+    }
+
+    const table = document.querySelector(".results-table");
+    if (!table) return;
+
+    const tbody = table.querySelector("tbody");
+    const headers = table.querySelectorAll("th.sortable");
+    let activeKey = "position";
+    let direction = 1;
+
+    function cellIndexForKey(key) {
+        const header = table.querySelector('th[data-key="' + key + '"]');
+        return header ? header.cellIndex : -1;
+    }
+
+    headers.forEach(header => {
+        header.addEventListener("click", () => {
+            const key = header.getAttribute("data-key");
+            const rows = Array.from(tbody.querySelectorAll("tr"));
+            const index = cellIndexForKey(key);
+            if (index < 0) return;
+
+            if (activeKey === key) {
+                direction *= -1;
+            } else {
+                activeKey = key;
+                direction = 1;
+            }
+
+            const duplicateMode = "{{ form_data.duplicate_mode }}";
+
+            if (duplicateMode === 'group') {
+                // Step 1: find sgrna_seq column index
+                const headerCells = Array.from(table.querySelectorAll("th"));
+                const sgrnaColIndex = headerCells.findIndex(th => th.getAttribute("data-key") === "sgrna_seq");
+
+                // Step 2: group rows by sgrna_seq
+                const groupMap = new Map(); // seq -> [rows]
+                rows.forEach(row => {
+                    const seq = sgrnaColIndex !== -1 ? row.children[sgrnaColIndex]?.innerText.trim() : row.rowIndex;
+                    if (!groupMap.has(seq)) groupMap.set(seq, []);
+                    groupMap.get(seq).push(row);
+                });
+
+                // Step 3: get representative value per group (best = max for scores, min for position desc)
+                const groups = Array.from(groupMap.values());
+
+                groups.sort((groupA, groupB) => {
+                    // get best value from each group for the clicked column
+                    const getVal = (group) => {
+                        const vals = group.map(r => {
+                            const cell = r.children[index]?.innerText.trim() || '';
+                            if (key === "alpha_score" || key === "avg_alpha_score" || key === "position") {
+                                return parseFloat(cell.replace(/[^\d.-]/g, '')) || 0;
+                            }
+                            return cell;
+                        });
+                        if (key === "alpha_score" || key === "avg_alpha_score") {
+                            return Math.max(...vals); // best score in group
+                        } else if (key === "position") {
+                            return Math.min(...vals); // lowest position in group
+                        }
+                        return vals[0];
+                    };
+
+                    const aVal = getVal(groupA);
+                    const bVal = getVal(groupB);
+
+                    if (typeof aVal === 'number') {
+                        return (aVal - bVal) * direction;
+                    }
+                    return aVal.localeCompare(bVal, undefined, {numeric: true}) * direction;
+                });
+
+
+                // Step 4: sort rows within each group by the clicked column
+                groups.forEach(group => {
+                    group.sort((a, b) => {
+                        const aCell = a.children[index]?.innerText.trim() || '';
+                        const bCell = b.children[index]?.innerText.trim() || '';
+                        if (key === "alpha_score" || key === "avg_alpha_score" || key === "position") {
+                            const aNum = parseFloat(aCell.replace(/[^\d.-]/g, '')) || 0;
+                            const bNum = parseFloat(bCell.replace(/[^\d.-]/g, '')) || 0;
+                            return (aNum - bNum) * direction;
+                        }
+                        return aCell.localeCompare(bCell, undefined, {numeric: true}) * direction;
+                    });
+                });
+
+                // Step 5: flatten groups back into rows and re-insert
+                const sortedRows = groups.flat();
+                sortedRows.forEach(row => tbody.appendChild(row));
+
+
+            } else {
+                // normal sorting (no grouping)
+                rows.sort((a, b) => {
+                    let aCell = a.children[index].innerText.trim();
+                    let bCell = b.children[index].innerText.trim();
+                    if (key === "alpha_score" || key === "avg_alpha_score" || key === "position") {
+                        let aNum = parseFloat(aCell.replace(/[^\d.-]/g, '')) || 0;
+                        let bNum = parseFloat(bCell.replace(/[^\d.-]/g, '')) || 0;
+                        return (aNum - bNum) * direction;
+                    }
+                    return aCell.localeCompare(bCell, undefined, {numeric: true}) * direction;
+                });
+                rows.forEach(row => tbody.appendChild(row));
+            }
+
+            // update sort icons
+            headers.forEach(h => {
+                const baseText = h.innerText.replace(/[▲▼•]/g, "").trim();
+                if (h.getAttribute("data-key") === activeKey) {
+                    h.innerHTML = baseText + (direction === 1 ? " ▲" : " ▼");
+                } else {
+                    h.innerHTML = baseText + " •";
+                }
+            });
+
+            // re-apply group colors after sort
+            applyGroupColors();
+        });
+    });
+
+    // Drag-to-scroll für die Tabelle mit Hand
+    const tableShell = document.querySelector('.table-shell');
+    let isDown = false;
+    let startX;
+    let scrollLeft;
+
+    tableShell.addEventListener('mousedown', (e) => {
+        isDown = true;
+        tableShell.style.cursor = 'grabbing';
+        startX = e.pageX - tableShell.offsetLeft;
+        scrollLeft = tableShell.scrollLeft;
+    });
+    tableShell.addEventListener('mouseleave', () => {
+        isDown = false;
+        tableShell.style.cursor = 'grab';
+    });
+    tableShell.addEventListener('mouseup', () => {
+        isDown = false;
+        tableShell.style.cursor = 'grab';
+    });
+    tableShell.addEventListener('mousemove', (e) => {
+        if (!isDown) return;
+        e.preventDefault();
+        const x = e.pageX - tableShell.offsetLeft;
+        const walk = (x - startX) * 1.5;
+        tableShell.scrollLeft = scrollLeft - walk;
+    });
+
+    function applyGroupColors() {
+        const duplicateMode = "{{ form_data.duplicate_mode }}";
+        if (duplicateMode !== 'group') return;
+
+        const bodyRows = Array.from(tbody.querySelectorAll("tr"));
+        const visibleSeqCounts = {};
+        bodyRows.forEach(row => {
+            const seq = row.getAttribute("data-sgrna-seq");
+            if (seq) visibleSeqCounts[seq] = (visibleSeqCounts[seq] || 0) + 1;
+        });
+
+        const colors = ['sgrna-group-a', 'sgrna-group-b', 'sgrna-group-c', 'sgrna-group-d', 'sgrna-group-e'];
+        const seqColorMap = {};
+        let colorIndex = 0;
+
+        bodyRows.forEach(row => {
+            row.classList.remove(
+                'sgrna-group-a', 'sgrna-group-b', 'sgrna-group-c', 'sgrna-group-d', 'sgrna-group-e',
+                'sgrna-group-partial'
+            );
+            const seq = row.getAttribute("data-sgrna-seq");
+            const bindingCount = parseInt(row.getAttribute("data-binding-count") || "1", 10);
+            if (!seq) return;
+
+            if (visibleSeqCounts[seq] >= 2) {
+                if (!(seq in seqColorMap)) {
+                    seqColorMap[seq] = colors[colorIndex % colors.length];
+                    colorIndex++;
+                }
+                row.classList.add(seqColorMap[seq]);
+            } else if (bindingCount > 1) {
+                row.classList.add('sgrna-group-partial');
+            }
+        });
+    }
+
+    // call on initial load
+    applyGroupColors();
+
+
+});
+
+function downloadTableAsCSV() {
+    const table = document.querySelector('.results-table');
+    if (!table) return;
+
+    const rows = [];
+
+    const headerCells = Array.from(table.querySelectorAll('thead th:not(.col-hidden):not(.row-indicator-col)'));
+    const headers = headerCells.map(th => th.innerText.replace(/[▲▼•]/g, '').trim());
+    rows.push(headers);
+
+    const bodyRows = Array.from(table.querySelectorAll('tbody tr'));
+    bodyRows.forEach(row => {
+        const cells = Array.from(row.querySelectorAll('td:not(.col-hidden):not(.row-indicator-col)'));
+        const rowData = cells.map(td => {
+            const text = td.innerText.trim().replace(/\n/g, ' | ');
+            return `"${text.replace(/"/g, '""')}"`;
+        });
+        rows.push(rowData);
+    });
+
+    const csvContent = rows.map(r => r.join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'crispr_results.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+}
+
+</script>
+
+<style>
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { background-color: var(--sortable-hover, #eee); }
+
+.col-hidden {
+    display: none !important;
+}
+.outcome-item { font-size: 0.85em; border-bottom: 1px solid #eee; padding: 2px 0; }
+.outcome-item:last-child { border-bottom: none; }
+.table-shell { cursor: grab; }
+.sgrna-group-a td {background: rgba(134, 239, 172, 0.35) !important;}  /* soft green */
+.sgrna-group-b td {background: rgba(147, 197, 253, 0.35) !important;}  /* soft blue */
+.sgrna-group-c td {background: rgba(216, 180, 254, 0.35) !important;}  /* soft purple */
+.sgrna-group-d td {background: rgba(253, 186, 116, 0.35) !important;}  /* soft orange */
+.sgrna-group-e td {background: rgba(249, 168, 212, 0.35) !important;}  /* soft pink */
+</style>
+
+{% endblock %}

@@ -1,0 +1,87 @@
+<!-- Base for all sites  AMBER DESIGNER -->
+
+{% load static %}
+<!DOCTYPE html>
+<html lang="de" data-theme="amber">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMBER Designer</title>
+    <script>
+        (function () {
+            var t = localStorage.getItem('amber-theme');
+            if (t === 'green' || t === 'amber' || t === 'scientific') {
+                document.documentElement.setAttribute('data-theme', t);
+            }
+        })();
+    </script>
+    <link rel="stylesheet" href="{% static 'designer/style.css' %}">
+</head>
+<body>
+    <div class="bg-orb bg-orb-left"></div>
+    <div class="bg-orb bg-orb-right"></div>
+    <header class="site-header">
+        <div class="container header-inner" style="flex-direction: row; align-items: center; justify-content: space-between;">
+            <a href="{% url 'home' %}" class="site-brand" title="Back to home">
+                <h1 style="letter-spacing: 0.08em; margin: 0;">AMBER</h1>
+                <p style="margin: 0.1rem 0 0 0; opacity: 0.9; letter-spacing: 0.12em; font-size: 0.9rem;">
+                    <strong>A</strong>lpha <strong>M</strong>issense <strong>B</strong>ase <strong>E</strong>diting <strong>R</strong>NA Designer
+                </p>
+            </a>
+            <div class="header-actions">
+                <div class="theme-switcher" role="group" aria-label="Color theme">
+                    <span class="theme-switcher-label">Theme</span>
+                    <button type="button" class="theme-option" data-theme="green" aria-pressed="false" title="Original green design">Classic</button>
+                    <button type="button" class="theme-option theme-option-active" data-theme="amber" aria-pressed="true" title="Dark amber design">Amber</button>
+                    <button type="button" class="theme-option" data-theme="scientific" aria-pressed="false" title="Clean lab-style design">Lab</button>
+                </div>
+                <nav class="site-nav">
+                    <a href="{% url 'home' %}" class="nav-btn {% if request.resolver_match.url_name == 'home' %}nav-btn-active{% endif %}">Home</a>
+                    <a href="{% url 'tutorial' %}" class="nav-btn {% if request.resolver_match.url_name == 'tutorial' %}nav-btn-active{% endif %}">Tutorial</a>
+                    <a href="{% url 'about' %}" class="nav-btn {% if request.resolver_match.url_name == 'about' %}nav-btn-active{% endif %}">About</a>
+                </nav>
+            </div>
+        </div>
+    </header>
+    <main class="container page-content">
+        {% block content %}{% endblock %}
+    </main>
+    <script>
+        (function () {
+            var STORAGE_KEY = 'amber-theme';
+            var DEFAULT_THEME = 'amber';
+            var VALID = { green: 1, amber: 1, scientific: 1 };
+
+            function applyTheme(theme) {
+                if (!VALID[theme]) {
+                    theme = DEFAULT_THEME;
+                }
+                document.documentElement.setAttribute('data-theme', theme);
+                try {
+                    localStorage.setItem(STORAGE_KEY, theme);
+                } catch (e) { /* private browsing */ }
+                document.querySelectorAll('.theme-option').forEach(function (btn) {
+                    var active = btn.getAttribute('data-theme') === theme;
+                    btn.classList.toggle('theme-option-active', active);
+                    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+                });
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                document.querySelectorAll('.theme-option').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        applyTheme(btn.getAttribute('data-theme'));
+                    });
+                });
+                var saved;
+                try {
+                    saved = localStorage.getItem(STORAGE_KEY);
+                } catch (e) {
+                    saved = null;
+                }
+                applyTheme(saved || document.documentElement.getAttribute('data-theme') || DEFAULT_THEME);
+            });
+        })();
+    </script>
+</body>
+</html>
