@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'designer',
+    'designer.apps.DesignerConfig',
 ]
 
 MIDDLEWARE = [
@@ -160,6 +160,7 @@ USE_X_FORWARDED_HOST = True
 
 # Local data directory (cache, etc.)
 DATA_DIR = BASE_DIR / 'data'
+SCREEN_DATA_DIR = BASE_DIR / 'files-archive-dir'
 
 
 def _resolve_cache_dir() -> Path:

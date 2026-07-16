@@ -10,16 +10,22 @@ It contains a Django-based web application for designing base-editing-compatible
 
 The application allows users to:
 
-- Enter a **UniProt ID** or **Ensembl transcript ID**
+- Enter a **UniProt ID** or **Ensembl transcript ID** (leading/trailing and internal whitespace is ignored)
 - Choose a base editor: **ABE** (A→G), **CBE** (C→T), or **both**
-- Set an **AlphaMissense pathogenicity threshold** to filter variants
+- Set an **AlphaMissense pathogenicity threshold** and whether to show scores **≥**, **≤**, or **all**
 - Define the **editing window** (default: positions 4–8)
 - Select the **number of top guide RNA candidates** per position
 - Choose how to handle **duplicate guide RNAs** (show once or group all occurrences)
 - Decide which columns should be shown in the results table
-- Decide if the results table should show all values or only the ones over the choosen threshold
 
 The tool returns ranked guide RNA candidates with protospacer, PAM, strand, target position, guide RNA outcomes annotated with AlphaMissense scores and their average Alpha Missense scores.
+
+On the results page you also get:
+
+- A **guide coverage** summary (fraction of amino acids editable, stacked by editor × score)
+- A **protein map** (UniProt domains + AMBER guide positions) for every analysis
+- An optional **Molstar / PDBe** AlphaFold structure viewer with hover highlighting of editable residues
+- Optional **screen enrichment plots** for genes in the published NGG library
 
 Results can be **downloaded as CSV or Excel**. If the results table is sorted by a column in the browser, only the **CSV download** preserves that sort order – the Excel download always uses the default order, which is by position.
 
@@ -59,8 +65,8 @@ Make sure you have **Conda** installed before setting up the project.
 Clone the repository and create the Conda environment:
 
 ```bash
-git clone https://github.com/KuechlerO/SWP2026-CRISPR-Tool.git
-cd SWP2026-CRISPR-Tool
+git clone https://github.com/KuechlerO/AMBER.git
+cd AMBER
 conda env create -f environment.yml
 conda activate crispr_tool_env
 ```

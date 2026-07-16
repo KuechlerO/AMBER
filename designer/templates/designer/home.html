@@ -77,8 +77,23 @@
                     >
                 </div>
 
+                <div class="filter-inline" style="margin-top: 0.65rem;">
+                    <label class="filter-radio">
+                        <input type="radio" name="score_filter_mode" value="above" checked>
+                        Score ≥ threshold
+                    </label>
+                    <label class="filter-radio">
+                        <input type="radio" name="score_filter_mode" value="below">
+                        Score ≤ threshold
+                    </label>
+                    <label class="filter-radio">
+                        <input type="radio" name="score_filter_mode" value="all">
+                        Show all
+                    </label>
+                </div>
+
                 <small class="help-text">
-                    Only mutations with a score above this threshold will be shown
+                    Choose whether to show variants with AlphaMissense scores ≥ or ≤ this threshold (or all variants)
                 </small>
             </div>
 

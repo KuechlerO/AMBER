@@ -1,11 +1,18 @@
 {% extends "designer/base.html" %}
 
+{% block extra_head %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/pdbe-molstar@3.3.0/build/pdbe-molstar-light.css">
+<script src="https://cdn.jsdelivr.net/npm/pdbe-molstar@3.3.0/build/pdbe-molstar-plugin.js"></script>
+{% endblock %}
+
 {% block content %}
 <div class="card page-card results-card">
     <h2>Results</h2>
     <p>Below are the ranked guide RNA candidates for the selected input parameters.</p>
 
     <div class="summary-box summary-box-bubbly">
+        <h3 class="results-subtitle">Input parameters</h3>
         <div class="summary-grid">
             <div class="summary-item">
                 {% if form_data.uniprot_id|slice:":4" == "ENST" %}
@@ -15,6 +22,12 @@
                 {% endif %}
                 <span class="summary-value">{{ form_data.uniprot_id }}</span>
             </div>
+            {% if form_data.gene_symbol %}
+            <div class="summary-item">
+                <span class="summary-label">Gene</span>
+                <span class="summary-value">{{ form_data.gene_symbol }}</span>
+            </div>
+            {% endif %}
             <div class="summary-item">
                 <span class="summary-label">Editor</span>
                 <span class="summary-value">
@@ -38,8 +51,52 @@
         </div>
     </div>
 
+    {% if coverage_stats %}
+    <section class="coverage-summary-section">
+        <h3 class="results-subtitle">Guide coverage</h3>
+        <div class="coverage-stats-list">
+            <div class="coverage-stat-row">
+                <span class="coverage-stat-label">Protein length (AA):</span>
+                <span class="coverage-stat-value">{{ coverage_stats.protein_length }}</span>
+            </div>
+            <div class="coverage-stat-row">
+                <span class="coverage-stat-label">Editable positions (current table filter):</span>
+                <span class="coverage-stat-value">{{ coverage_stats.editable_positions_display|default:coverage_stats.editable_positions }}</span>
+            </div>
+            <div class="coverage-stat-row">
+                <span class="coverage-stat-label">Coverage (current table filter):</span>
+                <span class="coverage-stat-value">{{ coverage_stats.coverage_pct_display|default:coverage_stats.coverage_pct }}%</span>
+            </div>
+            <div class="coverage-stat-row">
+                <span class="coverage-stat-label">Positions ≥ cutoff (all guides):</span>
+                <span class="coverage-stat-value">{{ coverage_stats.above_cutoff_positions }}</span>
+            </div>
+            <div class="coverage-stat-row">
+                <span class="coverage-stat-label">Positions &lt; cutoff (all guides):</span>
+                <span class="coverage-stat-value">{{ coverage_stats.below_cutoff_positions }}</span>
+            </div>
+            <div class="coverage-stat-row">
+                <span class="coverage-stat-label">Guide candidates (current table):</span>
+                <span class="coverage-stat-value">{{ coverage_stats.guide_count }}</span>
+            </div>
+            {% if coverage_stats.no_guide_count %}
+            <div class="coverage-stat-row">
+                <span class="coverage-stat-label">Pathogenic without guide:</span>
+                <span class="coverage-stat-value">{{ coverage_stats.no_guide_count }}</span>
+            </div>
+            {% endif %}
+        </div>
+        <p class="help-text">
+            The bar uses all guide positions for the current input settings (duplicate mode applied, score filter ignored),
+            split by editor and whether the best AlphaMissense score at that position is ≥ or &lt; the cutoff ({{ coverage_stats.cutoff }}).
+        </p>
+        <div id="coverage-chart" class="coverage-chart"></div>
+    </section>
+    {% endif %}
+
     <h3 class="results-subtitle">
-        In total: {{ guide_count }} guide RNA candidates found across {{ position_count }} editable positions
+        In total: {{ guide_count }} guide RNA candidate{{ guide_count|pluralize }} across {{ position_count }} position{{ position_count|pluralize }} with guides
+        {% if no_guide_count %}<span class="results-subtitle-extra">({{ no_guide_count }} pathogenic position{{ no_guide_count|pluralize }} without a guide — see below)</span>{% endif %}
     </h3>
     <p class="duplicate-display-note help-text">
         A <span class="multi-bind-badge multi-bind-badge-inline">×N</span> badge at the start of a row means that guide maps to N amino-acid positions (from the full analysis).
@@ -47,17 +104,14 @@
         (score or column filters may hide partners).
     </p>
 
-    <div class="actions">
-        <a class="btn secondary" href="{% url 'home' %}">New Analysis</a>
-        <a class="btn" href="{% url 'download_excel' %}">Download Excel</a>
-        <a class="btn" onclick="downloadTableAsCSV()" style="cursor:pointer;">Download CSV</a>
-    </div>
-
-
     <div class="display-options" style="margin-top: 25px; margin-bottom: 25px;">
-        <button type="button" class="toggle-btn display-options-toggle" onclick="toggleDisplayOptions(this)">
-            Change display &amp; filters
-        </button>
+        <div class="display-options-toolbar" role="group" aria-label="Display and download">
+            <button type="button" class="toggle-btn display-options-toggle" onclick="toggleDisplayOptions(this)">
+                Change display &amp; filters
+            </button>
+            <a class="btn" href="{% url 'download_excel' %}">Download Excel</a>
+            <a class="btn" href="#" onclick="downloadTableAsCSV(); return false;" style="cursor:pointer;">Download CSV</a>
+        </div>
 
         <div id="display-options-panel" class="display-options-panel" hidden>
             <form id="display-settings-form" method="POST" action="{% url 'results' %}">
@@ -84,12 +138,12 @@
                         <label class="filter-radio">
                             <input type="radio" name="score_filter_mode" value="above"
                                    {% if form_data.score_filter_mode != 'all' and form_data.score_filter_mode != 'below' %}checked{% endif %}>
-                            Score at or above cutoff
+                            Score ≥ cutoff
                         </label>
                         <label class="filter-radio">
                             <input type="radio" name="score_filter_mode" value="below"
                                    {% if form_data.score_filter_mode == 'below' %}checked{% endif %}>
-                            Score below cutoff
+                            Score ≤ cutoff
                         </label>
                     </div>
                     <div class="score-cutoff-row">
@@ -138,64 +192,201 @@
     </div>
 
 
-    <div class="table-shell">
-        <table class="results-table">
-            <thead>
-                <tr>
-                    <th class="row-indicator-col" scope="col" aria-label="Multi-site guide"></th>
-                    {% for col_key, col_label in display_columns_map %}
-                        <th class="result-col col-{{ col_key }}{% if col_key not in form_data.selected_columns %} col-hidden{% endif %} {% if col_key == 'position' or col_key == 'alpha_score' or col_key == 'avg_alpha_score' or col_key == 'editor_used' %}sortable{% endif %}"
-                            data-key="{{ col_key }}">
+    <section class="results-main-split" aria-label="Guide table and structure">
+        <div class="results-table-pane">
+            <h3 class="results-subtitle results-pane-heading">Guide RNA candidates</h3>
+            <div class="table-shell">
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th class="row-indicator-col" scope="col" aria-label="Multi-site guide"></th>
+                            {% for col_key, col_label in display_columns_map %}
+                                <th class="result-col col-{{ col_key }}{% if col_key not in form_data.selected_columns %} col-hidden{% endif %} {% if col_key == 'position' or col_key == 'alpha_score' or col_key == 'avg_alpha_score' or col_key == 'editor_used' %}sortable{% endif %}"
+                                    data-key="{{ col_key }}">
+                                    {{ col_label }}
+                                    {% comment %} showing icon only if column is sortable {% endcomment %}
+                                    {% if col_key == 'position' or col_key == 'alpha_score' or col_key == 'avg_alpha_score' or col_key == 'editor_used' %}
+                                        {% if col_key == "position" %} ▲{% else %} •{% endif %}
+                                    {% endif %}
+                                </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in results %}
+                        <tr data-sgrna-seq="{{ row.sgrna_seq }}" data-binding-count="{{ row.binding_count|default:1 }}" data-position="{{ row.position }}">
+                            <td class="row-indicator-col">
+                                {% if row.binding_count > 1 %}
+                                    <span class="multi-bind-badge" title="Maps to {{ row.binding_count }} positions: {% for p in row.binding_positions %}{{ p }}{% if not forloop.last %}, {% endif %}{% endfor %}">×{{ row.binding_count }}</span>
+                                {% endif %}
+                            </td>
+                            {% for col_key, col_label in display_columns_map %}
+                                <td class="result-col col-{{ col_key }}{% if col_key not in form_data.selected_columns %} col-hidden{% endif %}" data-col="{{ col_key }}">
+                                    {% if col_key == "position" %}{{ row.position }}
+                                    {% elif col_key == "wt_codon" %}<span class="sequence-chip">{{ row.wt_codon }}</span>
+                                    {% elif col_key == "wt_aa" %}{{ row.wt_aa }}
+                                    {% elif col_key == "mut_aa" %}{{ row.mut_aa }}
+                                    {% elif col_key == "alpha_score" %}<span class="score-cell">{{ row.alpha_score|floatformat:3 }}</span>
+                                    {% elif col_key == "editor_used" %}<span class="editor-badge">{{ row.editor_used }}</span>
+                                    {% elif col_key == "sgrna_seq" %}<span class="mono">{{ row.sgrna_seq }}</span>
+                                    {% elif col_key == "protospacer" %}<span class="mono">{{ row.protospacer }}</span>
+                                    {% elif col_key == "pam" %}<span class="pam-badge">{{ row.pam }}</span>
+                                    {% elif col_key == "strand" %}<span class="strand-badge">{{ row.strand }}</span>
+                                    {% elif col_key == "target_position" %}{{ row.target_position|join:", " }}
+                                    {% elif col_key == "outcomes" %}
+                                        <div class="mono outcomes-cell">
+                                            {% for o in row.outcomes %}<div class="outcome-item">{{ o }}</div>{% endfor %}
+                                        </div>
+                                    {% elif col_key == "avg_alpha_score" %}
+                                        <span class="score-cell">{{ row.avg_alpha_score|floatformat:3 }}</span>
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
-                            {{ col_label }}
+        <aside class="results-structure-pane" aria-label="Protein structure">
+            <h3 class="results-subtitle results-pane-heading">Structure viewer</h3>
+            <p class="help-text structure-pane-help">
+                AlphaFold model for
+                <strong>{{ structure_accession|default:form_data.uniprot_accession|default:form_data.uniprot_id }}</strong>.
+                Hover a row to preview a residue; click to keep it highlighted and gently frame it.
+            </p>
+            <p id="structure-viewer-status" class="help-text">Loading structure…</p>
+            <div id="structure-viewer" class="structure-viewer"></div>
+        </aside>
+    </section>
 
-                            {% comment %} showing icon only if column is sortable {% endcomment %}
-                            {% if col_key == 'position' or col_key == 'alpha_score' or col_key == 'avg_alpha_score' or col_key == 'editor_used' %}
-                                {% if col_key == "position" %} ▲{% else %} •{% endif %}
+    <section class="screen-overview-section" style="margin-top: 32px;">
+        <h3 class="results-subtitle">Protein map</h3>
+        <p class="help-text">
+            UniProt domains and AMBER guide positions from your <strong>current results table</strong>.
+            {% if screen_plot_available %}
+            Guide colors indicate overlap with screen data by marker when enrichment data has loaded:
+            <span class="marker-swatch marker-tnfa">TNFa</span>
+            <span class="marker-swatch marker-ifng">IFNG</span>
+            <span class="marker-swatch marker-pd1">PD1</span>
+            <span class="marker-swatch marker-cd25">CD25</span>
+            (<span class="marker-swatch marker-multi">multiple</span>
+            (if several markers).
+            {% else %}
+            Domains are loaded from UniProt when this gene is not in the local screen-library annotation set.
+            {% endif %}
+        </p>
+        <p id="screen-overview-status" class="help-text screen-plot-status-msg">Loading protein map…</p>
+        <div id="screen-overview-chart" class="screen-overview-chart"></div>
+    </section>
+
+    {% if no_guide_count %}
+    <section class="no-guide-section">
+        <button type="button" class="toggle-btn no-guide-toggle" onclick="toggleNoGuideSection(this)">
+            Show {{ no_guide_count }} position{{ no_guide_count|pluralize }} without a guide RNA
+        </button>
+        <div id="no-guide-panel" class="no-guide-panel" hidden>
+            <p class="help-text no-guide-help">
+                Pathogenic positions above your analysis threshold for which no qualifying guide RNA was found
+                (PAM, editing window, exon boundaries, or pathogenic outcome rules).
+                Score filters on this page apply to these rows as well.
+            </p>
+            <div class="table-shell">
+                <table class="results-table no-guide-table">
+                    <thead>
+                        <tr>
+                            <th>Position</th>
+                            <th>WT Codon</th>
+                            <th>WT AA</th>
+                            <th>Mutated AA</th>
+                            <th>AlphaMissense Score</th>
+                            <th>Pathogenic AAs</th>
+                            {% if show_editor_in_no_guide %}<th>Editor</th>{% endif %}
+                            <th>Guide RNA</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in no_guide_positions %}
+                        <tr>
+                            <td>{{ row.position }}</td>
+                            <td><span class="sequence-chip">{{ row.wt_codon }}</span></td>
+                            <td>{{ row.wt_aa }}</td>
+                            <td>{{ row.mut_aa|default:"—" }}</td>
+                            <td>
+                                {% if row.alpha_score is not None %}
+                                    <span class="score-cell">{{ row.alpha_score|floatformat:3 }}</span>
+                                {% else %}—{% endif %}
+                            </td>
+                            <td>{{ row.pathogenic_AA|default:"—" }}</td>
+                            {% if show_editor_in_no_guide %}
+                                <td><span class="editor-badge">{{ row.editor_used }}</span></td>
                             {% endif %}
-                        </th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in results %}
-                <tr data-sgrna-seq="{{ row.sgrna_seq }}" data-binding-count="{{ row.binding_count|default:1 }}">
-                    <td class="row-indicator-col">
-                        {% if row.binding_count > 1 %}
-                            <span class="multi-bind-badge" title="Maps to {{ row.binding_count }} positions: {% for p in row.binding_positions %}{{ p }}{% if not forloop.last %}, {% endif %}{% endfor %}">×{{ row.binding_count }}</span>
-                        {% endif %}
-                    </td>
-                    {% for col_key, col_label in display_columns_map %}
-                        <td class="result-col col-{{ col_key }}{% if col_key not in form_data.selected_columns %} col-hidden{% endif %}" data-col="{{ col_key }}">
-                            {% if col_key == "position" %}{{ row.position }}
-                            {% elif col_key == "wt_codon" %}<span class="sequence-chip">{{ row.wt_codon }}</span>
-                            {% elif col_key == "wt_aa" %}{{ row.wt_aa }}
-                            {% elif col_key == "mut_aa" %}{{ row.mut_aa }}
-                            {% elif col_key == "alpha_score" %}<span class="score-cell">{{ row.alpha_score|floatformat:3 }}</span>
-                            {% elif col_key == "editor_used" %}<span class="editor-badge">{{ row.editor_used }}</span>
-                            {% elif col_key == "sgrna_seq" %}<span class="mono">{{ row.sgrna_seq }}</span>
-                            {% elif col_key == "protospacer" %}<span class="mono">{{ row.protospacer }}</span>
-                            {% elif col_key == "pam" %}<span class="pam-badge">{{ row.pam }}</span>
-                            {% elif col_key == "strand" %}<span class="strand-badge">{{ row.strand }}</span>
-                            {% elif col_key == "target_position" %}{{ row.target_position|join:", " }}
-                            {% elif col_key == "outcomes" %}
-                                <div class="mono outcomes-cell">
-                                    {% for o in row.outcomes %}<div class="outcome-item">{{ o }}</div>{% endfor %}
-                                </div>
-                            {% elif col_key == "avg_alpha_score" %}
-                                <span class="score-cell">{{ row.avg_alpha_score|floatformat:3 }}</span>
-                            {% endif %}
-                        </td>
-                    {% endfor %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                            <td class="no-guide-placeholder">No guide found</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="screen-plot-section" style="margin-top: 40px;">
+        <h3 class="results-subtitle">Screen enrichment plots (optional)</h3>
+        <p class="help-text">
+            For genes in the NGG screen library (Supplementary Table 1). LFC panels for TNFa, IFNG, PD1, and CD25
+            (ABE and CBE) from the publication screen — not your AlphaMissense run.
+            Domains and colored AMBER guides are shown again at the bottom.
+        </p>
+        {% if screen_plot_available %}
+            {% if screen_plot_lookup_uniprot and screen_plot_lookup_uniprot != form_data.uniprot_id %}
+                <p class="help-text screen-plot-lookup-note">Library match: {{ screen_plot_lookup_uniprot }}</p>
+            {% endif %}
+            <div class="screen-plot-controls">
+                <button type="button" class="btn" id="screen-plot-btn" disabled aria-disabled="true">Loading screen data…</button>
+            </div>
+            <p id="screen-plot-status" class="help-text screen-plot-status-msg">Checking screen data status…</p>
+            <button type="button" class="toggle-btn screen-plot-toggle" id="screen-plot-panel-toggle" hidden onclick="toggleScreenPlotPanel(this)">
+                Show / hide screen enrichment plots
+            </button>
+            <div id="screen-plot-panel" class="screen-plot-panel" hidden>
+                <div id="screen-plot-chart" style="width:100%; min-height:600px;"></div>
+            </div>
+        {% else %}
+            {% if screen_plot_unavailable_reason == "data_unavailable" %}
+                <p class="help-text screen-plot-unavailable">Screen plot data is not available on the server (file access). Please contact the administrator.</p>
+            {% else %}
+                <p class="help-text screen-plot-unavailable">Your UniProt ID is not in that library.</p>
+            {% endif %}
+            <button type="button" class="btn" id="screen-plot-btn" disabled aria-disabled="true">Generate screen plot</button>
+        {% endif %}
+    </section>
+
+    <div id="screen-plot-overlay" class="screen-plot-overlay" hidden aria-hidden="true">
+        <div class="screen-plot-overlay-box" role="status" aria-live="polite">
+            <span class="screen-plot-spinner-icon" aria-hidden="true"></span>
+            <span class="screen-plot-overlay-text">Generating plot…</span>
+        </div>
     </div>
 </div>
 
 
 <script>
+function toggleNoGuideSection(button) {
+    const panel = document.getElementById("no-guide-panel");
+    const isHidden = panel.hasAttribute("hidden");
+    const count = {{ no_guide_count|default:0 }};
+    const label = count === 1 ? "position" : "positions";
+    if (isHidden) {
+        panel.removeAttribute("hidden");
+        button.innerText = "Hide " + count + " " + label + " without a guide RNA";
+    } else {
+        panel.setAttribute("hidden", "hidden");
+        button.innerText = "Show " + count + " " + label + " without a guide RNA";
+    }
+}
+
 function toggleDisplayOptions(button) {
     const panel = document.getElementById("display-options-panel");
     const isHidden = panel.hasAttribute("hidden");
@@ -442,8 +633,440 @@ document.addEventListener("DOMContentLoaded", function() {
     // call on initial load
     applyGroupColors();
 
+    const coverageChartEl = document.getElementById('coverage-chart');
+    const coverageFigure = {{ coverage_figure_json|default:"null"|safe }};
+    if (coverageChartEl && coverageFigure && coverageFigure.data) {
+        Plotly.newPlot(coverageChartEl, coverageFigure.data, coverageFigure.layout, { responsive: true, displayModeBar: false });
+    }
 
+    const structureViewerEl = document.getElementById('structure-viewer');
+    const structureStatusEl = document.getElementById('structure-viewer-status');
+    const structureAccession = '{{ structure_accession|default:form_data.uniprot_accession|default:form_data.uniprot_id|escapejs }}';
+    const guidePositionsForStructure = {{ guide_positions_json|default:"[]"|safe }};
+    const structureProteinLength = {{ coverage_stats.protein_length|default:form_data.protein_length|default:0 }};
+    let structureViewer = null;
+
+    let selectedGuideRow = null;
+    let selectedGuidePosition = null;
+    // Mild zoom: frame a local window around the residue instead of a single AA.
+    const STRUCTURE_FOCUS_PAD = 28;
+
+    function structureSelectData(positions, highlightPos) {
+        const data = (positions || []).map(function (pos) {
+            return {
+                start_residue_number: pos,
+                end_residue_number: pos,
+                color: '#2563eb',
+                focus: false,
+            };
+        });
+        if (highlightPos) {
+            data.push({
+                start_residue_number: highlightPos,
+                end_residue_number: highlightPos,
+                color: '#e11d48',
+                focus: false,
+            });
+        }
+        return data;
+    }
+
+    function focusWindowForResidue(pos) {
+        const pad = STRUCTURE_FOCUS_PAD;
+        const maxPos = structureProteinLength > 0 ? structureProteinLength : Math.max(pos + pad, 1);
+        return {
+            start_residue_number: Math.max(1, pos - pad),
+            end_residue_number: Math.min(maxPos, pos + pad),
+        };
+    }
+
+    function highlightStructureResidues(highlightPos, options) {
+        if (!structureViewer || !structureViewer.visual) return;
+        const opts = options || {};
+        const shouldFocus = !!opts.focus && !!highlightPos;
+        const data = structureSelectData(guidePositionsForStructure, highlightPos || null);
+        if (!data.length) return;
+        structureViewer.visual.select({
+            data: data,
+            nonSelectedColor: { r: 200, g: 200, b: 200 },
+        }).catch(function () {});
+        if (shouldFocus && structureViewer.visual.focus) {
+            structureViewer.visual.focus([focusWindowForResidue(highlightPos)]).catch(function () {});
+        }
+    }
+
+    function applyStructureHighlight(previewPos, options) {
+        const pos = previewPos != null ? previewPos : selectedGuidePosition;
+        highlightStructureResidues(pos, options);
+    }
+
+    function setSelectedGuideRow(row) {
+        if (selectedGuideRow) {
+            selectedGuideRow.classList.remove('row-selected');
+            selectedGuideRow.removeAttribute('aria-selected');
+        }
+        if (row && row === selectedGuideRow) {
+            selectedGuideRow = null;
+            selectedGuidePosition = null;
+            applyStructureHighlight(null, { focus: false });
+        } else if (row) {
+            selectedGuideRow = row;
+            const pos = parseInt(row.getAttribute('data-position'), 10);
+            selectedGuidePosition = Number.isNaN(pos) ? null : pos;
+            row.classList.add('row-selected');
+            row.setAttribute('aria-selected', 'true');
+            applyStructureHighlight(null, { focus: true });
+        } else {
+            selectedGuideRow = null;
+            selectedGuidePosition = null;
+            applyStructureHighlight(null, { focus: false });
+        }
+    }
+
+    async function initStructureViewer() {
+        if (!structureViewerEl || !structureAccession || typeof PDBeMolstarPlugin === 'undefined') {
+            if (structureStatusEl) structureStatusEl.textContent = 'Structure viewer unavailable.';
+            return;
+        }
+        const pdbUrl = '{% url "structure_pdb" accession="ACCESSION" %}'.replace('ACCESSION', encodeURIComponent(structureAccession));
+        try {
+            structureViewer = new PDBeMolstarPlugin();
+            await structureViewer.render(structureViewerEl, {
+                customData: {
+                    url: pdbUrl,
+                    format: 'pdb',
+                    binary: false,
+                },
+                bgColor: {r: 248, g: 250, b: 252},
+                hideControls: true,
+                sequencePanel: false,
+                pdbeLink: false,
+                landscape: false,
+            });
+            if (structureStatusEl) {
+                structureStatusEl.textContent = guidePositionsForStructure.length
+                    ? 'Structure loaded. Hover to preview; click a row to keep highlight and gently frame the residue.'
+                    : 'Structure loaded.';
+            }
+            applyStructureHighlight(null, { focus: false });
+        } catch (err) {
+            if (structureStatusEl) {
+                structureStatusEl.textContent = 'Could not load structure for ' + structureAccession + '.';
+            }
+        }
+    }
+
+    initStructureViewer();
+
+    const resultsTableBody = document.querySelector('.results-table tbody');
+    if (resultsTableBody) {
+        resultsTableBody.addEventListener('mouseover', function (e) {
+            const row = e.target.closest('tr[data-position]');
+            if (!row) return;
+            const pos = parseInt(row.getAttribute('data-position'), 10);
+            if (!Number.isNaN(pos)) applyStructureHighlight(pos, { focus: false });
+        });
+        resultsTableBody.addEventListener('mouseleave', function () {
+            applyStructureHighlight(null, { focus: false });
+        });
+        resultsTableBody.addEventListener('click', function (e) {
+            const row = e.target.closest('tr[data-position]');
+            if (!row) return;
+            setSelectedGuideRow(row);
+        });
+    }
+
+    const screenPlotBtn = document.getElementById('screen-plot-btn');
+    const screenPlotStatusEl = document.getElementById('screen-plot-status');
+    const screenOverviewStatusEl = document.getElementById('screen-overview-status');
+    const screenOverviewChart = document.getElementById('screen-overview-chart');
+    const screenPlotOverlay = document.getElementById('screen-plot-overlay');
+    const screenCsrf = document.querySelector('#display-settings-form input[name="csrfmiddlewaretoken"]')?.value || '';
+    const screenUniprotId = '{{ form_data.uniprot_accession|default:form_data.uniprot_id|escapejs }}';
+    const screenPlotAvailable = {{ screen_plot_available|yesno:"true,false" }};
+
+    function showScreenPlotOverlay() {
+        if (!screenPlotOverlay) return;
+        screenPlotOverlay.hidden = false;
+        screenPlotOverlay.setAttribute('aria-hidden', 'false');
+    }
+
+    function hideScreenPlotOverlay() {
+        if (!screenPlotOverlay) return;
+        screenPlotOverlay.hidden = true;
+        screenPlotOverlay.setAttribute('aria-hidden', 'true');
+    }
+
+    function setScreenPlotButton(text, disabled) {
+        if (!screenPlotBtn) return;
+        screenPlotBtn.textContent = text;
+        screenPlotBtn.disabled = disabled;
+        if (disabled) {
+            screenPlotBtn.setAttribute('aria-disabled', 'true');
+        } else {
+            screenPlotBtn.removeAttribute('aria-disabled');
+        }
+    }
+
+    const stageLabels = {
+        idle: 'starting',
+        table1: 'gene index',
+        table3: 'screen counts (~220 MB)',
+        stats: 'base-level statistics',
+        grouping: 'grouping by residue',
+        domains: 'domain annotations',
+        ready: 'ready',
+        error: 'error',
+    };
+
+    async function fetchScreenLoadStatus() {
+        const statusUrl = '{% url "screen_plot_status" %}';
+        const resp = await fetch(statusUrl, { credentials: 'same-origin', cache: 'no-store' });
+        const text = await resp.text();
+        try {
+            return JSON.parse(text);
+        } catch (_) {
+            return { parseError: true, httpStatus: resp.status };
+        }
+    }
+
+    function applyScreenLoadStatus(data, pollIndex) {
+        if (data.parseError) {
+            setScreenPlotButton('Loading screen data… (waiting for server)', true);
+            if (screenPlotStatusEl) {
+                screenPlotStatusEl.textContent = 'Could not read load status (HTTP ' + data.httpStatus + '). Retrying…';
+            }
+            return 'retry';
+        }
+        if (data.error) {
+            setScreenPlotButton('Retry loading screen data', false);
+            if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Screen data failed: ' + data.error;
+            return 'error';
+        }
+        if (data.ready) {
+            setScreenPlotButton('Preparing enrichment plots…', true);
+            if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Screen data ready. Building plots in background…';
+            return 'ready';
+        }
+        const stage = stageLabels[data.stage] || data.stage || 'tables';
+        const elapsed = typeof data.elapsed_sec === 'number' ? data.elapsed_sec : (pollIndex * 2);
+        setScreenPlotButton('Loading screen data… (' + stage + ')', true);
+        if (screenPlotStatusEl) {
+            screenPlotStatusEl.textContent = 'Loading screen data — step: ' + stage
+                + ' (' + Math.floor(elapsed / 60) + 'm ' + (elapsed % 60) + 's elapsed, first load ~4 min)';
+        }
+        return 'loading';
+    }
+
+    async function pollScreenPlotReady() {
+        const maxAttempts = 300;
+        for (let i = 0; i < maxAttempts; i++) {
+            const data = await fetchScreenLoadStatus();
+            const state = applyScreenLoadStatus(data, i);
+            if (state === 'ready') return true;
+            if (state === 'error') return false;
+            await new Promise(r => setTimeout(r, 2000));
+        }
+        setScreenPlotButton('Refresh page to retry', false);
+        if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Screen data is still loading. Refresh the page in a minute.';
+        return false;
+    }
+
+    async function pollFullFigureReady() {
+        const statusUrl = '{% url "screen_plot_status" %}?uniprot_id=' + encodeURIComponent(screenUniprotId);
+        const maxAttempts = 300;
+        for (let i = 0; i < maxAttempts; i++) {
+            const resp = await fetch(statusUrl, { credentials: 'same-origin', cache: 'no-store' });
+            const respText = await resp.text();
+            let data;
+            try {
+                data = JSON.parse(respText);
+            } catch (_) {
+                if (screenPlotStatusEl) {
+                    screenPlotStatusEl.textContent = 'Could not read plot status (HTTP ' + resp.status + '). Retrying…';
+                }
+                await new Promise(r => setTimeout(r, 2000));
+                continue;
+            }
+            if (data.figure_error) {
+                if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Plot preparation failed: ' + data.figure_error;
+                return false;
+            }
+            if (data.figure_ready) {
+                setScreenPlotButton('Show screen enrichment plots', false);
+                if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Screen enrichment plots ready.';
+                return true;
+            }
+            setScreenPlotButton('Preparing enrichment plots…', true);
+            if (screenPlotStatusEl) {
+                if (!data.ready || data.loading) {
+                    screenPlotStatusEl.textContent = 'Waiting for screen data…';
+                } else if (data.figure_building) {
+                    screenPlotStatusEl.textContent = 'Building enrichment plots in background…';
+                } else {
+                    screenPlotStatusEl.textContent = 'Starting enrichment plot build…';
+                }
+            }
+            await new Promise(r => setTimeout(r, 2000));
+        }
+        if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Plot preparation is taking longer than expected. Try again in a minute.';
+        return false;
+    }
+
+    async function loadOverviewChart(refreshColors) {
+        if (!screenOverviewChart) return;
+        const overviewUrl = '{% url "screen_plot_overview" %}';
+        const body = new URLSearchParams({ uniprot_id: screenUniprotId });
+        if (screenCsrf) body.append('csrfmiddlewaretoken', screenCsrf);
+        const resp = await fetch(overviewUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': screenCsrf,
+            },
+            body: body.toString(),
+            credentials: 'same-origin',
+        });
+        const respText = await resp.text();
+        const contentType = resp.headers.get('content-type') || '';
+        let data;
+        try {
+            data = JSON.parse(respText);
+        } catch (parseErr) {
+            throw new Error('HTTP ' + resp.status + ' (' + contentType + '): ' + respText.slice(0, 80));
+        }
+        if (!resp.ok || !data.available) {
+            if (screenOverviewStatusEl) {
+                screenOverviewStatusEl.textContent = data.reason || 'Protein map unavailable.';
+            }
+            return;
+        }
+        Plotly.newPlot(screenOverviewChart, data.figure.data, data.figure.layout, { responsive: true });
+        if (screenOverviewStatusEl) {
+            screenOverviewStatusEl.textContent = data.colored_guides
+                ? 'Protein map with screen overlap colors.'
+                : (refreshColors
+                    ? 'Protein map (guide colors update when screen data finishes loading).'
+                    : 'Protein map loaded.');
+        }
+    }
+
+    if (screenOverviewChart) {
+        loadOverviewChart(false).catch(err => {
+            if (screenOverviewStatusEl) screenOverviewStatusEl.textContent = 'Could not load protein map: ' + err;
+        });
+    }
+
+    async function startFullFigurePolling() {
+        pollFullFigureReady();
+    }
+
+    async function bootstrapScreenPlots() {
+        const initial = await fetchScreenLoadStatus();
+        const initialState = applyScreenLoadStatus(initial, 0);
+        if (initialState === 'ready') {
+            if (screenOverviewChart) loadOverviewChart(true).catch(() => {});
+            startFullFigurePolling();
+            return;
+        }
+        if (initialState === 'error') return;
+        fetch('{% url "screen_plot_warmup" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': screenCsrf,
+            },
+            body: new URLSearchParams({ csrfmiddlewaretoken: screenCsrf }).toString(),
+            credentials: 'same-origin',
+        }).catch(() => {});
+        const ready = await pollScreenPlotReady();
+        if (ready && screenOverviewChart) loadOverviewChart(true).catch(() => {});
+        if (ready) {
+            startFullFigurePolling();
+        }
+    }
+
+    if (screenPlotBtn && screenPlotAvailable) {
+        bootstrapScreenPlots();
+        screenPlotBtn.addEventListener('click', async () => {
+            if (screenPlotBtn.disabled) return;
+            if (screenPlotBtn.textContent === 'Retry loading screen data') {
+                setScreenPlotButton('Loading screen data…', true);
+                await fetch('{% url "screen_plot_warmup" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': screenCsrf,
+                    },
+                    body: new URLSearchParams({ csrfmiddlewaretoken: screenCsrf }).toString(),
+                    credentials: 'same-origin',
+                });
+                const ok = await pollScreenPlotReady();
+                if (ok) {
+                    startFullFigurePolling();
+                }
+                return;
+            }
+            const panel = document.getElementById('screen-plot-panel');
+            const toggle = document.getElementById('screen-plot-panel-toggle');
+            const chartEl = document.getElementById('screen-plot-chart');
+
+            screenPlotBtn.disabled = true;
+            screenPlotBtn.setAttribute('aria-disabled', 'true');
+            showScreenPlotOverlay();
+
+            try {
+                const body = new URLSearchParams({ uniprot_id: screenUniprotId });
+                if (screenCsrf) body.append('csrfmiddlewaretoken', screenCsrf);
+                const resp = await fetch('{% url "screen_enrichment_plot" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': screenCsrf,
+                    },
+                    body: body.toString(),
+                    credentials: 'same-origin',
+                });
+                const respText = await resp.text();
+                let data;
+                try {
+                    data = JSON.parse(respText);
+                } catch (parseErr) {
+                    if (resp.status === 504) {
+                        alert('Server timed out (504). Wait until screen data is ready, then try again.');
+                    } else {
+                        alert('Server returned a non-JSON response (HTTP ' + resp.status + ').');
+                    }
+                    return;
+                }
+                if (resp.status === 202 && (data.loading || data.building)) {
+                    alert(data.reason || 'Screen plots are still being prepared. Wait until the status says ready, then try again.');
+                    return;
+                }
+                if (!resp.ok || !data.available) {
+                    alert(data.reason || 'Screen plot unavailable.');
+                    return;
+                }
+                panel.hidden = false;
+                toggle.hidden = false;
+                Plotly.newPlot(chartEl, data.figure.data, data.figure.layout, { responsive: true });
+            } catch (err) {
+                alert('Failed to load screen plots: ' + err);
+            } finally {
+                screenPlotBtn.disabled = false;
+                screenPlotBtn.removeAttribute('aria-disabled');
+                hideScreenPlotOverlay();
+            }
+        });
+    }
 });
+
+function toggleScreenPlotPanel(btn) {
+    const panel = document.getElementById('screen-plot-panel');
+    if (!panel) return;
+    panel.hidden = !panel.hidden;
+    btn.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
+}
 
 function downloadTableAsCSV() {
     const table = document.querySelector('.results-table');
@@ -493,6 +1116,51 @@ th.sortable:hover { background-color: var(--sortable-hover, #eee); }
 .sgrna-group-c td {background: rgba(216, 180, 254, 0.35) !important;}  /* soft purple */
 .sgrna-group-d td {background: rgba(253, 186, 116, 0.35) !important;}  /* soft orange */
 .sgrna-group-e td {background: rgba(249, 168, 212, 0.35) !important;}  /* soft pink */
+.screen-plot-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 12px 0; }
+.screen-plot-controls label { font-weight: 600; }
+.screen-plot-spinner-icon {
+    width: 2rem; height: 2rem;
+    border: 3px solid rgba(0,0,0,0.12); border-top-color: #333;
+    border-radius: 50%;
+    animation: screen-plot-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+@keyframes screen-plot-spin { to { transform: rotate(360deg); } }
+.screen-plot-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(2px);
+}
+.screen-plot-overlay[hidden] { display: none !important; }
+.screen-plot-overlay-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 28px 36px;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    font-size: 1rem;
+    color: #333;
+}
+.screen-plot-panel { margin-top: 16px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa; }
+.screen-plot-unavailable { color: #666; }
+.screen-plot-lookup-note { font-size: 0.9em; opacity: 0.85; }
+.screen-plot-status-msg { margin: 8px 0 0 0; font-style: italic; }
+#screen-plot-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.screen-overview-chart { width: 100%; min-height: 260px; border: 1px solid #ddd; border-radius: 8px; padding: 8px; background: #fafafa; }
+.marker-swatch { display: inline-block; padding: 0 6px; margin: 0 4px; border-radius: 4px; font-size: 0.85em; font-weight: 600; }
+.marker-tnfa { background: #22c55e; color: #052e16; }
+.marker-ifng { background: #f97316; color: #431407; }
+.marker-pd1 { background: #3b82f6; color: #eff6ff; }
+.marker-cd25 { background: #a855f7; color: #faf5ff; }
+.marker-multi { background: #eab308; color: #422006; }
 </style>
 
 {% endblock %}

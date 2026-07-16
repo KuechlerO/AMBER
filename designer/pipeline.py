@@ -79,11 +79,19 @@ def get_cds_from_uniprot(uniprot_id):
     transcript_id = extract_ensembl_transcript(data)
     return fetch_cds(transcript_id)
 
+def extract_gene_symbol(data) -> str | None:
+    for gene in data.get('genes') or []:
+        name = (gene.get('geneName') or {}).get('value')
+        if name:
+            return str(name)
+    return None
+
+
 def get_cds_and_transcript_from_uniprot(uniprot_id):
     data = fetch_uniprot_json(uniprot_id)
     transcript_id = extract_ensembl_transcript(data)
     cds = fetch_cds(transcript_id)
-    return cds, transcript_id
+    return cds, transcript_id, extract_gene_symbol(data)
 
 def ensembl_to_uniprot(ensembl_id: str) -> str | None:
     url = 'https://rest.uniprot.org/uniprotkb/search'
@@ -695,13 +703,21 @@ def run_pipeline(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, wi
 
     transcript_id = ''
     cds = ''
+    gene_symbol = None
+    input_was_ensembl = uniprot_id.startswith('ENST')
 
-    if uniprot_id.startswith('ENST'):
+    if input_was_ensembl:
         transcript_id = uniprot_id
         uniprot_id = ensembl_to_uniprot(transcript_id)
+        if not uniprot_id:
+            raise ValueError(f'Could not map Ensembl ID {transcript_id} to a UniProt accession.')
         cds = fetch_cds(transcript_id)
+        try:
+            gene_symbol = extract_gene_symbol(fetch_uniprot_json(uniprot_id))
+        except Exception:
+            gene_symbol = None
     else:
-        cds, transcript_id = get_cds_and_transcript_from_uniprot(uniprot_id)
+        cds, transcript_id, gene_symbol = get_cds_and_transcript_from_uniprot(uniprot_id)
         print(transcript_id)
 
     threshold = float(alpha_threshold)
@@ -732,4 +748,12 @@ def run_pipeline(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, wi
         )
     )
 
-    return annotate_sgrna_binding(all_rows)
+    protein_length = len(cds) // 3
+    return {
+        'guide_rows': annotate_sgrna_binding(all_rows),
+        'no_guide_positions': [],
+        'protein_length': protein_length,
+        'uniprot_accession': uniprot_id,
+        'gene_symbol': gene_symbol or '',
+        'transcript_id': transcript_id,
+    }

@@ -8,21 +8,29 @@ class UserInputError(Exception):
     """Error due to invalid user input"""
     pass
 
+
+def normalize_input_id(raw_id: str) -> str:
+    """Strip surrounding whitespace and remove internal spaces from IDs."""
+    return ''.join((raw_id or '').split())
+
+
 # tests if UniProt ID is valid
 def is_valid_uniprot_id(uniprot_id: str) -> bool:
-    if uniprot_id[0] not in ['P', 'O', 'Q']:
+    uid = normalize_input_id(uniprot_id)
+    if not uid or uid[0] not in ['P', 'O', 'Q']:
         return False
 
-    url = f"https://rest.uniprot.org/uniprotkb/{uniprot_id}.json"
+    url = f"https://rest.uniprot.org/uniprotkb/{uid}.json"
     response = requests.get(url)
     return response.status_code == 200
 
 # tests if Ensembl ID is valid
 def is_valid_ensembl_id(ensembl_id: str) -> bool:
-    if not ensembl_id.startswith('ENST'):
+    eid = normalize_input_id(ensembl_id)
+    if not eid.startswith('ENST'):
         return False
 
-    url = f"https://rest.ensembl.org/sequence/id/{ensembl_id}?type=cds"
+    url = f"https://rest.ensembl.org/sequence/id/{eid}?type=cds"
 
     response = requests.get(url, headers={'Content-Type': 'text/plain'}, timeout=20)
     return response.status_code == 200
@@ -30,6 +38,7 @@ def is_valid_ensembl_id(ensembl_id: str) -> bool:
 # analysis pipeline
 
 def run_analysis(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, window_max, duplicate_mode='hide', pam_type='NGG'):
+    uniprot_id = normalize_input_id(uniprot_id)
     print('RUN ANALYSIS')
     print('UniProt ID:', uniprot_id)
     print('Editor:', editor)
@@ -52,7 +61,7 @@ def run_analysis(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, wi
         print('window_min cannot be greater than window_max.')
         raise UserInputError('window_min cannot be greater than window_max.')
 
-    if not uniprot_id or len(uniprot_id.strip()) < 5:
+    if not uniprot_id or len(uniprot_id) < 5:
         print('Invalid UniProt ID/ Ensembl ID input.')
         raise UserInputError('Invalid UniProt ID/ Ensembl ID provided.')
 
@@ -78,7 +87,7 @@ def run_analysis(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, wi
 
     try:
         return run_pipeline(
-            uniprot_id=uniprot_id.strip(),
+            uniprot_id=uniprot_id,
             editor=editor,
             alpha_threshold=alpha_threshold,
             top_sgrnas=top_sgrnas,

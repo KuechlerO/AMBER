@@ -790,8 +790,29 @@ input[type="range"]::-moz-range-thumb {
     z-index: 2;
 }
 
+.results-table tbody tr[data-position] {
+    cursor: pointer;
+}
+
 .results-table tbody tr:hover {
     background: var(--table-row-hover);
+}
+
+.results-table tbody tr.row-selected {
+    background: color-mix(in srgb, var(--accent) 16%, var(--table-row-hover));
+    outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+    outline-offset: -2px;
+}
+
+.results-table tbody tr.row-selected:hover {
+    background: color-mix(in srgb, var(--accent) 22%, var(--table-row-hover));
+}
+
+.display-options-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
 }
 
 .results-card {
@@ -799,6 +820,83 @@ input[type="range"]::-moz-range-thumb {
     max-width: none;
     box-sizing: border-box;
 }
+
+/* Wider canvas on results so table + structure can sit side by side */
+.container:has(.results-card) {
+    width: min(1480px, 96%);
+}
+
+.results-main-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.95fr);
+    gap: 1.15rem 1.35rem;
+    align-items: start;
+    margin-top: 0.35rem;
+}
+
+.results-pane-heading {
+    margin-top: 0;
+    margin-bottom: 0.55rem;
+}
+
+.results-table-pane .table-shell {
+    max-height: min(72vh, 640px);
+}
+
+.results-structure-pane {
+    position: sticky;
+    top: 1rem;
+    align-self: start;
+    background: linear-gradient(135deg, var(--summary-box-start), var(--bg-elevated));
+    border-radius: 18px;
+    padding: 0.85rem 0.9rem 1rem;
+    border: 1px solid var(--border-subtle);
+}
+
+.structure-pane-help {
+    margin-top: 0;
+    margin-bottom: 0.45rem;
+    font-size: 0.9rem;
+}
+
+.structure-viewer {
+    position: relative;
+    width: 100%;
+    height: min(62vh, 560px);
+    min-height: 360px;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #f8fafc;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.structure-viewer .msp-plugin {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+@media (max-width: 1100px) {
+    .results-main-split {
+        grid-template-columns: 1fr;
+    }
+
+    .results-structure-pane {
+        position: static;
+        order: 2;
+    }
+
+    .results-table-pane {
+        order: 1;
+    }
+
+    .structure-viewer {
+        height: 420px;
+        min-height: 360px;
+    }
+}
+
 
 .mono {
     font-family: "Courier New", monospace;
@@ -1344,3 +1442,84 @@ th.sortable:hover {
         justify-content: center;
     }
 }
+
+/* Guide coverage + structure viewer */
+.coverage-summary-section {
+    margin: 1.25rem 0 1.5rem;
+    padding: 1rem 1.05rem;
+    border-radius: 18px;
+    background: linear-gradient(135deg, var(--summary-box-start), var(--bg-elevated));
+}
+
+.coverage-stats-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0.45rem 1.25rem;
+    margin-bottom: 0.85rem;
+}
+
+.coverage-stat-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.5rem;
+    align-items: baseline;
+    background: var(--summary-item-bg);
+    border-radius: 12px;
+    padding: 0.55rem 0.75rem;
+}
+
+.coverage-stat-label {
+    font-size: 0.86rem;
+    opacity: 0.78;
+}
+
+.coverage-stat-value {
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.coverage-chart {
+    width: 100%;
+    min-height: 160px;
+    background: var(--summary-item-bg);
+    border-radius: 14px;
+    padding: 0.35rem 0.5rem 0.15rem;
+}
+
+.screen-overview-chart {
+    width: 100%;
+    min-height: 280px;
+}
+
+.marker-swatch {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #fff;
+    margin: 0 0.15rem;
+}
+
+.marker-tnfa { background: #22c55e; }
+.marker-ifng { background: #f97316; }
+.marker-pd1 { background: #3b82f6; }
+.marker-cd25 { background: #a855f7; }
+.marker-multi { background: #eab308; color: #1f2937; }
+
+.filter-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.1rem;
+    align-items: center;
+}
+
+.filter-radio {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+
