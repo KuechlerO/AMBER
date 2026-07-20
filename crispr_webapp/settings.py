@@ -57,7 +57,11 @@ ROOT_URLCONF = 'crispr_webapp.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # Explicit DIRS so a stale runserver app-template cache cannot miss new apps.
+        'DIRS': [
+            BASE_DIR / 'designer' / 'templates',
+            BASE_DIR / 'saffron' / 'templates',
+        ],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
