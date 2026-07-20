@@ -1,0 +1,30 @@
+{% extends "saffron/base.html" %}
+
+{% block content %}
+<div class="card page-card">
+    <h2>About SAFFRON</h2>
+    <p>
+        <strong>SAFFRON</strong> — <em>Signal-peptide Assessment Framework For Ranking Of N-terminal edits</em> —
+        is a sibling tool to <a href="{% url 'home' %}">AMBER</a>.
+    </p>
+    <p>
+        It uses <strong>SignalP 6.0</strong> (fast mode) to predict signal peptides, designs ABE/CBE guides
+        that introduce missense changes in the predicted SP region, and reports Δ SignalP scores for each mutant.
+    </p>
+    <p>
+        SignalP is run as a local CLI (Python 3.10 sidecar). When the binary is not installed,
+        SAFFRON falls back to a deterministic mock predictor so the UI can be developed and tested.
+    </p>
+    <p>
+        Guide outcomes are annotated with
+        <strong>CLIN_SIG</strong> (Ensembl VEP) and
+        <strong>potentially pathogenic</strong> flags from
+        <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10583284/" target="_blank" rel="noopener">
+            Gutierrez Guarnizo et al., <em>NAR Genom Bioinform</em> (2023)
+        </a>
+        when the UniProt accession and amino-acid change appear in their published catalogue.
+        Matching “Yes” rows are highlighted in light red in the results table.
+    </p>
+    <p><a class="btn" href="{% url 'saffron_home' %}">Start analysis</a></p>
+</div>
+{% endblock %}

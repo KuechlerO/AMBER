@@ -1,0 +1,27 @@
+{% extends "saffron/base.html" %}
+
+{% block content %}
+<div class="card page-card results-card" style="text-align: center; padding: 40px;">
+    <h2>Running SAFFRON</h2>
+    <p style="margin-top: 10px;">
+        SignalP scoring and guide design are in progress.<br>
+        This can take longer when many SP-region mutants are scored.
+    </p>
+    <div class="spinner-modern"></div>
+    <p class="help-text" style="margin-top: 20px;">Please do not refresh the page.</p>
+
+    <form id="hiddenForm" method="POST" action="{% url 'saffron_results' %}">
+        {% csrf_token %}
+        {% for key, values in request.POST.lists %}
+            {% for value in values %}
+                <input type="hidden" name="{{ key }}" value="{{ value }}">
+            {% endfor %}
+        {% endfor %}
+    </form>
+</div>
+<script>
+    setTimeout(function () {
+        document.getElementById('hiddenForm').submit();
+    }, 300);
+</script>
+{% endblock %}

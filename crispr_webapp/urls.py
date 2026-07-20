@@ -16,16 +16,19 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
-from django.conf.urls.static import static
 from django.urls import path, include
 from django.conf import settings
-import os
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('saffron/', include('saffron.urls')),
     path('', include('designer.urls')),
 ]
 
 if settings.DEBUG:
-    urlpatterns += staticfiles_urlpatterns()
-    urlpatterns += static('/static/', document_root=os.path.join(settings.BASE_DIR, 'designer/static'))
+    # FORCE_SCRIPT_NAME makes STATIC_URL include the subpath (/crispr-project/static/),
+    # but PATH_INFO after the proxy is /static/... — so register finders at /static/.
+    # Do NOT use django.conf.urls.static with a single app document_root: the first
+    # /static/ mount would catch all requests and 404 files from other apps.
+    urlpatterns += staticfiles_urlpatterns(prefix='/static/')

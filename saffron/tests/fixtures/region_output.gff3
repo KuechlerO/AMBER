@@ -1,0 +1,6 @@
+##gff-version 3
+WT	SignalP-6.0	signal_peptide	1	22	0.97	.	.	ID=WT.SP
+WT	SignalP-6.0	n-region	1	5	0.90	.	.	ID=WT.N
+WT	SignalP-6.0	h-region	6	17	0.95	.	.	ID=WT.H
+WT	SignalP-6.0	c-region	18	22	0.88	.	.	ID=WT.C
+m5_A5V	SignalP-6.0	signal_peptide	1	21	0.90	.	.	ID=m5.SP

@@ -1,0 +1,315 @@
+/* SAFFRON — distinct gold/crimson palette (not AMBER brown) */
+
+html[data-theme="saffron"] {
+    --bg-base: #1c1208;
+    --bg-end: #2a180c;
+    --bg-elevated: #3a2210;
+    --bg-card: rgba(58, 34, 16, 0.96);
+    --bg-input: #4a2c14;
+    --bg-input-top: #553318;
+
+    --text-primary: #fff7ed;
+    --text-secondary: #ffedd5;
+    --text-muted: #c4a484;
+    --text-on-accent: #3b1408;
+    --text-on-accent-muted: #fff7ed;
+    --header-fg: #fffbeb;
+
+    --border-subtle: rgba(251, 191, 36, 0.32);
+    --border-strong: rgba(245, 158, 11, 0.55);
+    --shadow-accent: rgba(234, 88, 12, 0.32);
+    --focus-ring: rgba(251, 191, 36, 0.30);
+    --card-shadow: rgba(154, 52, 18, 0.18);
+
+    --gradient-header: linear-gradient(115deg, #7f1d1d 0%, #c2410c 38%, #ca8a04 72%, #eab308 100%);
+    --gradient-btn: linear-gradient(135deg, #ea580c, #eab308);
+    --gradient-btn-hover: linear-gradient(135deg, #f97316, #fbbf24);
+    --gradient-toggle-checked: linear-gradient(135deg, #ea580c, #a16207);
+    --gradient-btn-example: linear-gradient(135deg, #9a3412, #ca8a04);
+    --gradient-btn-example-hover: linear-gradient(135deg, #c2410c, #eab308);
+
+    --orb-left: rgba(234, 179, 8, 0.18);
+    --orb-right: rgba(220, 38, 38, 0.14);
+    --body-glow-1: rgba(234, 179, 8, 0.20);
+    --body-glow-2: rgba(234, 88, 12, 0.16);
+    --body-glow-3: rgba(185, 28, 28, 0.12);
+
+    --accent: #f59e0b;
+    --accent-light: #fde68a;
+    --accent-dark: #ea580c;
+    --accent-darker: #c2410c;
+    --accent-darkest: #7f1d1d;
+    --accent-pale: #ffedd5;
+
+    --summary-box-start: #3a2210;
+    --summary-item-bg: rgba(74, 44, 20, 0.92);
+    --table-shell-bg: rgba(74, 44, 20, 0.95);
+    --table-row-hover: rgba(234, 179, 8, 0.14);
+    --mono-color: #fde68a;
+    --chip-bg: rgba(202, 138, 4, 0.32);
+    --chip-text: #fef08a;
+    --pam-bg: rgba(127, 29, 29, 0.40);
+    --pam-text: #fecaca;
+    --editor-badge-start: rgba(194, 65, 12, 0.45);
+    --editor-badge-end: rgba(202, 138, 4, 0.30);
+    --editor-badge-text: #fef08a;
+    --code-bg: rgba(161, 98, 7, 0.35);
+    --code-text: #fef08a;
+    --link-accent: #fbbf24;
+    --toggle-link: #fbbf24;
+    --error-user-heading: #fbbf24;
+    --error-user-bg: rgba(127, 29, 29, 0.28);
+    --error-user-border: #ea580c;
+    --warning-badge-bg: #eab308;
+    --warning-badge-fg: #422006;
+    --warning-badge-border: #fbbf24;
+    --checkbox-checked-bg: #ea580c;
+    --checked-border: #eab308;
+    --tutorial-visual-bg: rgba(58, 34, 16, 0.75);
+    --sortable-hover: rgba(234, 179, 8, 0.22);
+    --spinner-track: rgba(234, 179, 8, 0.22);
+    --spinner-accent: #eab308;
+    --range-track-start: #7f1d1d;
+    --range-track-end: #eab308;
+}
+
+.saffron-body .saffron-header {
+    background: var(--gradient-header);
+}
+
+.saffron-header .site-brand h1 {
+    color: var(--header-fg, #fffbeb);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.28);
+}
+
+/* Top-left app switch (AMBER ↔ SAFFRON) */
+.header-inner-tools {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.header-brand-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.app-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(0, 0, 0, 0.18);
+    color: var(--header-fg, #fff);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-decoration: none;
+    text-transform: uppercase;
+    opacity: 0.92;
+    transition: background 0.15s ease, opacity 0.15s ease, transform 0.15s ease;
+}
+
+.app-switch:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.16);
+    transform: translateY(-1px);
+    color: var(--header-fg, #fff);
+}
+
+/* Editing window: keep en-dash vertically centered (shared .range-inputs from designer) */
+.saffron-body .range-separator {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+    padding: 0 0.15rem;
+    transform: none;
+    position: relative;
+    top: 0;
+}
+
+/* Input mode radios: one horizontal row */
+.saffron-body .input-mode-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.85rem 1.5rem;
+}
+
+.badge-sp-lost {
+    display: inline-block;
+    margin-left: 0.4rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: #b91c1c;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.row-sp-lost {
+    background: color-mix(in srgb, #fecaca 22%, transparent);
+}
+
+.row-paper-pathogenic td {
+    background: color-mix(in srgb, #fecaca 42%, transparent) !important;
+}
+
+.results-table tbody tr.row-paper-pathogenic:hover td {
+    background: color-mix(in srgb, #fca5a5 48%, transparent) !important;
+}
+
+.badge-paper-patho {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: #b91c1c;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.clin-sig-cell {
+    max-width: 11rem;
+    font-size: 0.78rem;
+    word-break: break-word;
+}
+
+.plot-thumb,
+.plot-thumb-wrap img {
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: #fff;
+    object-fit: contain;
+}
+
+.plot-thumb-wrap {
+    display: inline-block;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: zoom-in;
+}
+
+.saffron-plot-modal {
+    border: none;
+    border-radius: 18px;
+    padding: 1rem 1.2rem 1.4rem;
+    max-width: min(1180px, 96vw);
+    width: min(1180px, 96vw);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.saffron-plot-modal::backdrop {
+    background: rgba(15, 23, 42, 0.55);
+}
+
+.plot-modal-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    width: 100%;
+}
+
+.plot-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    width: 100%;
+}
+
+.plot-modal-title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.plot-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.9rem;
+    width: 100%;
+}
+
+.plot-compare.plot-compare-single {
+    grid-template-columns: 1fr;
+    max-width: 720px;
+    margin-inline: auto;
+}
+
+.plot-panel {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.plot-panel figcaption {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
+.plot-panel img {
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: #fff;
+}
+
+@media (max-width: 820px) {
+    .plot-compare {
+        grid-template-columns: 1fr;
+    }
+}
+.form-label-like {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+    color: var(--text-secondary);
+}
+
+.saffron-table .mono {
+    font-size: 0.82rem;
+}
+
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+th.sortable:hover {
+    background-color: var(--sortable-hover, rgba(234, 179, 8, 0.22));
+}
+
+.signalp-status {
+    margin: 0 0 1rem;
+    padding: 0.65rem 0.9rem;
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+    background: var(--summary-item-bg);
+    font-size: 0.92rem;
+    color: var(--text-secondary);
+}
+
+.signalp-status-ok {
+    border-color: color-mix(in srgb, #22c55e 45%, var(--border-subtle));
+}
+
+.signalp-status-mock {
+    border-color: color-mix(in srgb, #f59e0b 55%, var(--border-subtle));
+}

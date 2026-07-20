@@ -1,0 +1,161 @@
+{% extends "saffron/base.html" %}
+
+{% block content %}
+<div class="card page-card intro-card">
+    <h2>Signal-peptide base-editing guides</h2>
+    <p>
+        <strong>SAFFRON</strong> finds ABE/CBE guide RNAs that introduce missense changes inside
+        <strong>SignalP 6.0</strong>–predicted signal peptides, then re-scores each mutant protein
+        and ranks edits by change in SignalP scores (Δ).
+    </p>
+    <p>
+        Provide a <strong>UniProt / Ensembl ID</strong> for full guide design, or paste an
+        <strong>amino-acid sequence</strong> for SignalP-only scoring (no guides without a CDS).
+    </p>
+</div>
+
+<div class="card page-card form-card">
+    <h2>Start analysis</h2>
+
+    {% if signalp.backend == 'cli' %}
+    <p class="signalp-status signalp-status-ok">SignalP 6.0 CLI connected — plots use authentic model probabilities.</p>
+    {% elif signalp.registered == False and signalp.detail %}
+    <p class="signalp-status signalp-status-mock">
+        {{ signalp.detail }}
+        See <code>saffron/SIGNALP_INSTALL.md</code>.
+        Until then, analyses use a <strong>mock</strong> stand-in.
+    </p>
+    {% else %}
+    <p class="signalp-status signalp-status-mock">
+        SignalP 6.0 CLI not found (<code>{{ signalp.bin }}</code>).
+        Scores and plots currently use a <strong>mock</strong> stand-in.
+        Install via <code>environment.signalp.yml</code> and register the DTU tarball
+        (see <code>saffron/SIGNALP_INSTALL.md</code>) for real SignalP plots.
+    </p>
+    {% endif %}
+
+    <form method="POST" action="{% url 'saffron_loading' %}" id="saffron-form">
+        {% csrf_token %}
+
+        <div class="form-group">
+            <span class="form-label-like">Input mode</span>
+            <div class="filter-inline input-mode-row">
+                <label class="filter-radio">
+                    <input type="radio" name="input_mode" value="uniprot" checked id="mode-uniprot">
+                    UniProt / Ensembl ID
+                </label>
+                <label class="filter-radio">
+                    <input type="radio" name="input_mode" value="sequence" id="mode-sequence">
+                    Amino-acid sequence
+                </label>
+            </div>
+        </div>
+
+        <div class="form-grid" id="uniprot-fields">
+            <div class="form-group">
+                <label for="uniprot_id">UniProt ID or Ensembl ID</label>
+                <div class="input-with-action">
+                    <input type="text" id="uniprot_id" name="uniprot_id" placeholder="e.g. P05067" value="P05067">
+                    <button type="button" class="btn btn-example" id="example-btn" title="Example (APP / P05067)">Example</button>
+                </div>
+                <small class="help-text">Whitespace is ignored. Example: amyloid precursor protein (has a classical SP).</small>
+            </div>
+
+            <div class="form-group">
+                <label for="mutation">Optional mutation (e.g. A23V)</label>
+                <input type="text" id="mutation" name="mutation" placeholder="A23V">
+                <small class="help-text">Validated against the WT sequence; matching guide rows are highlighted.</small>
+            </div>
+        </div>
+
+        <div class="form-group" id="sequence-fields" hidden>
+            <label for="aa_sequence">Protein sequence</label>
+            <textarea id="aa_sequence" name="aa_sequence" rows="5" placeholder="Paste one-letter amino-acid sequence…"></textarea>
+            <small class="help-text">SignalP only in this mode — guides require UniProt/Ensembl.</small>
+        </div>
+
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="organism">SignalP organism</label>
+                <select id="organism" name="organism">
+                    <option value="eukarya" selected>Eukarya</option>
+                    <option value="other">Other (prokaryotes / archaea)</option>
+                </select>
+            </div>
+
+            <div class="form-group" data-uniprot-only>
+                <label for="editor">Base editor</label>
+                <select id="editor" name="editor">
+                    <option value="BOTH" selected>ABE + CBE</option>
+                    <option value="ABE">ABE</option>
+                    <option value="CBE">CBE</option>
+                </select>
+            </div>
+
+            <div class="form-group" data-uniprot-only>
+                <label for="pam_type">PAM</label>
+                <select id="pam_type" name="pam_type">
+                    <option value="NGG" selected>NGG</option>
+                    <option value="NG">NG</option>
+                    <option value="NAG">NAG</option>
+                </select>
+            </div>
+
+            <div class="form-group" data-uniprot-only>
+                <label for="top_sgrnas">Top guides per position</label>
+                <input type="number" id="top_sgrnas" name="top_sgrnas" value="5" min="1" max="50">
+            </div>
+
+            <div class="form-group" data-uniprot-only>
+                <label>Editing window</label>
+                <div class="range-inputs">
+                    <input type="number" name="window_min" value="4" min="1" max="20" aria-label="Window min">
+                    <span class="range-separator" aria-hidden="true">–</span>
+                    <input type="number" name="window_max" value="8" min="1" max="20" aria-label="Window max">
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn">Run SAFFRON</button>
+        </div>
+    </form>
+</div>
+
+<script>
+(function () {
+    var modeUniprot = document.getElementById('mode-uniprot');
+    var modeSeq = document.getElementById('mode-sequence');
+    var uniprotFields = document.getElementById('uniprot-fields');
+    var seqFields = document.getElementById('sequence-fields');
+    var uniprotInput = document.getElementById('uniprot_id');
+    var seqInput = document.getElementById('aa_sequence');
+
+    function syncMode() {
+        var isSeq = modeSeq.checked;
+        uniprotFields.hidden = isSeq;
+        seqFields.hidden = !isSeq;
+        document.querySelectorAll('[data-uniprot-only]').forEach(function (el) {
+            el.style.display = isSeq ? 'none' : '';
+        });
+        if (isSeq) {
+            uniprotInput.removeAttribute('required');
+            seqInput.setAttribute('required', 'required');
+        } else {
+            seqInput.removeAttribute('required');
+            uniprotInput.setAttribute('required', 'required');
+        }
+    }
+    modeUniprot.addEventListener('change', syncMode);
+    modeSeq.addEventListener('change', syncMode);
+    syncMode();
+
+    document.getElementById('example-btn').addEventListener('click', function () {
+        modeUniprot.checked = true;
+        syncMode();
+        uniprotInput.value = 'P05067';
+        document.getElementById('mutation').value = '';
+    });
+})();
+</script>
+{% endblock %}

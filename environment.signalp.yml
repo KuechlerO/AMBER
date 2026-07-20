@@ -1,0 +1,22 @@
+# Sidecar env for SignalP 6.0 (Python ≤3.10). Keep separate from Django's
+# environment.yml (Python 3.12). Install with:
+#
+#   micromamba create -y -n signalp6 -f environment.signalp.yml
+#
+# Or inside the Docker image (see Dockerfile): micromamba env named `signalp6`.
+#
+# Note: the `predector::signalp6` package is a proprietary placeholder that wraps
+# SignalP 6.0. Academic model weights / the full DTU package may still be required
+# depending on the channel build — see saffron/SIGNALP_INSTALL.md.
+
+name: signalp6
+channels:
+  - predector
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - pip
+  - numpy<2
+  - predector::signalp6

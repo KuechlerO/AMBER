@@ -32,8 +32,15 @@ def is_valid_ensembl_id(ensembl_id: str) -> bool:
 
     url = f"https://rest.ensembl.org/sequence/id/{eid}?type=cds"
 
-    response = requests.get(url, headers={'Content-Type': 'text/plain'}, timeout=20)
-    return response.status_code == 200
+    try:
+        response = requests.get(
+            url,
+            headers={'Content-Type': 'text/plain', 'Accept': 'text/plain'},
+            timeout=60,
+        )
+        return response.status_code == 200
+    except requests.RequestException:
+        return False
 
 # analysis pipeline
 

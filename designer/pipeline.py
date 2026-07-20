@@ -1,9 +1,11 @@
 import itertools
+import time
 from pathlib import Path
 import pandas as pd
 from Bio.Seq import Seq
 from Bio.Data import CodonTable
 import requests
+from django.conf import settings
 from django.db import connections
 
 from .models import Alpha_missense
@@ -11,6 +13,31 @@ from .models import Alpha_missense
 # ===========================
 # simple help functions
 # ===========================
+
+def _http_get(url, *, headers=None, params=None, timeout=None, retries=None):
+    """
+    GET with retries for flaky upstreams (Ensembl via institutional proxy).
+    CDS fetches often need >20s under load.
+    """
+    timeout = timeout if timeout is not None else int(
+        getattr(settings, 'ENSEMBL_TIMEOUT_SEC', 60)
+    )
+    retries = retries if retries is not None else int(
+        __import__('os').environ.get('ENSEMBL_HTTP_RETRIES', '3')
+    )
+    last_exc: Exception | None = None
+    for attempt in range(max(1, retries)):
+        try:
+            r = requests.get(url, headers=headers, params=params, timeout=timeout)
+            return r
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            last_exc = exc
+            if attempt + 1 >= retries:
+                break
+            time.sleep(1.5 * (attempt + 1))
+    assert last_exc is not None
+    raise last_exc
+
 
 # ---------------------------
 # Codon translation helpers
@@ -49,7 +76,7 @@ def complementary_base(base):
 # ---------------------------
 def fetch_uniprot_json(uniprot_id):
     url = f'https://rest.uniprot.org/uniprotkb/{uniprot_id}.json'
-    r = requests.get(url, timeout=20)
+    r = _http_get(url, timeout=30)
     r.raise_for_status()
     return r.json()
 
@@ -63,7 +90,7 @@ def extract_ensembl_transcript(data):
 
 def fetch_cds(transcript_id):
     url = f'https://rest.ensembl.org/sequence/id/{transcript_id}?type=cds'
-    r = requests.get(url, headers={'Content-Type': 'text/plain'}, timeout=20)
+    r = _http_get(url, headers={'Content-Type': 'text/plain', 'Accept': 'text/plain'}, timeout=60)
 
     if r.status_code != 200:
         raise ValueError(f'CDS not found: {r.status_code}')
@@ -103,7 +130,7 @@ def ensembl_to_uniprot(ensembl_id: str) -> str | None:
     }
 
     try:
-        r = requests.get(url, params=params, timeout=10)
+        r = _http_get(url, params=params, timeout=30)
         r.raise_for_status()
         data = r.json()
 
@@ -146,7 +173,7 @@ def get_alphamissense_from_db(uniprot_nr, patho_threshold):
 # ---------------------------
 def get_exon_boundaries(transcript_id, cds_length):
     url = f'https://rest.ensembl.org/map/cds/{transcript_id}/1..{cds_length}'
-    r = requests.get(url, headers={'Content-Type': 'application/json'}, timeout=40)
+    r = _http_get(url, headers={'Content-Type': 'application/json'}, timeout=60)
     r.raise_for_status()
     data = r.json()
 

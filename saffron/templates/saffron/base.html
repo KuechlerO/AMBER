@@ -1,48 +1,50 @@
-<!-- Base for all sites  AMBER DESIGNER -->
-
 {% load static %}
 <!DOCTYPE html>
-<html lang="de" data-theme="amber">
+<html lang="en" data-theme="saffron">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AMBER Designer</title>
+    <title>SAFFRON</title>
     <script>
         (function () {
-            var t = localStorage.getItem('amber-theme');
-            if (t === 'green' || t === 'amber' || t === 'scientific') {
+            var t = localStorage.getItem('saffron-theme');
+            if (t === 'green' || t === 'saffron' || t === 'scientific') {
                 document.documentElement.setAttribute('data-theme', t);
+            } else if (t === 'amber') {
+                /* migrate old default */
+                document.documentElement.setAttribute('data-theme', 'saffron');
             }
         })();
     </script>
     <link rel="stylesheet" href="{% static 'designer/style.css' %}">
+    <link rel="stylesheet" href="{% static 'saffron/style.css' %}">
     {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body class="saffron-body">
     <div class="bg-orb bg-orb-left"></div>
     <div class="bg-orb bg-orb-right"></div>
-    <header class="site-header">
+    <header class="site-header saffron-header">
         <div class="container header-inner header-inner-tools">
             <div class="header-brand-col">
-                <a href="{% url 'saffron_home' %}" class="app-switch" title="Switch to SAFFRON">← SAFFRON</a>
-                <a href="{% url 'home' %}" class="site-brand" title="Back to home">
-                    <h1 style="letter-spacing: 0.08em; margin: 0;">AMBER</h1>
-                    <p style="margin: 0.1rem 0 0 0; opacity: 0.9; letter-spacing: 0.12em; font-size: 0.9rem;">
-                        <strong>A</strong>lpha <strong>M</strong>issense <strong>B</strong>ase <strong>E</strong>diting <strong>R</strong>NA Designer
+                <a href="{% url 'home' %}" class="app-switch" title="Switch to AMBER Designer">← AMBER</a>
+                <a href="{% url 'saffron_home' %}" class="site-brand" title="SAFFRON home">
+                    <h1 style="letter-spacing: 0.08em; margin: 0;">SAFFRON</h1>
+                    <p style="margin: 0.1rem 0 0 0; opacity: 0.92; letter-spacing: 0.04em; font-size: 0.82rem; max-width: 28rem; line-height: 1.35;">
+                        <strong>S</strong>ignal-peptide <strong>A</strong>ssessment <strong>F</strong>ramework
+                        <strong>F</strong>or <strong>R</strong>anking <strong>O</strong>f <strong>N</strong>-terminal edits
                     </p>
                 </a>
             </div>
             <div class="header-actions">
                 <div class="theme-switcher" role="group" aria-label="Color theme">
                     <span class="theme-switcher-label">Theme</span>
-                    <button type="button" class="theme-option" data-theme="green" aria-pressed="false" title="Original green design">Classic</button>
-                    <button type="button" class="theme-option theme-option-active" data-theme="amber" aria-pressed="true" title="Dark amber design">Amber</button>
+                    <button type="button" class="theme-option" data-theme="green" aria-pressed="false" title="Classic green design">Classic</button>
+                    <button type="button" class="theme-option theme-option-active" data-theme="saffron" aria-pressed="true" title="Saffron gold design">Saffron</button>
                     <button type="button" class="theme-option" data-theme="scientific" aria-pressed="false" title="Clean lab-style design">Lab</button>
                 </div>
                 <nav class="site-nav">
-                    <a href="{% url 'home' %}" class="nav-btn {% if request.resolver_match.url_name == 'home' %}nav-btn-active{% endif %}">Home</a>
-                    <a href="{% url 'tutorial' %}" class="nav-btn {% if request.resolver_match.url_name == 'tutorial' %}nav-btn-active{% endif %}">Tutorial</a>
-                    <a href="{% url 'about' %}" class="nav-btn {% if request.resolver_match.url_name == 'about' %}nav-btn-active{% endif %}">About</a>
+                    <a href="{% url 'saffron_home' %}" class="nav-btn {% if request.resolver_match.url_name == 'saffron_home' %}nav-btn-active{% endif %}">Home</a>
+                    <a href="{% url 'saffron_about' %}" class="nav-btn {% if request.resolver_match.url_name == 'saffron_about' %}nav-btn-active{% endif %}">About</a>
                 </nav>
             </div>
         </div>
@@ -52,11 +54,14 @@
     </main>
     <script>
         (function () {
-            var STORAGE_KEY = 'amber-theme';
-            var DEFAULT_THEME = 'amber';
-            var VALID = { green: 1, amber: 1, scientific: 1 };
+            var STORAGE_KEY = 'saffron-theme';
+            var DEFAULT_THEME = 'saffron';
+            var VALID = { green: 1, saffron: 1, scientific: 1 };
 
             function applyTheme(theme) {
+                if (theme === 'amber') {
+                    theme = DEFAULT_THEME;
+                }
                 if (!VALID[theme]) {
                     theme = DEFAULT_THEME;
                 }

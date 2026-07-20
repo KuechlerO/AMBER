@@ -1,0 +1,9 @@
+{% extends "saffron/base.html" %}
+
+{% block content %}
+<div class="card page-card">
+    <h2>Something went wrong</h2>
+    <p>{{ message }}</p>
+    <p style="margin-top: 1.25rem;"><a class="btn" href="{% url 'saffron_home' %}">Back to SAFFRON</a></p>
+</div>
+{% endblock %}

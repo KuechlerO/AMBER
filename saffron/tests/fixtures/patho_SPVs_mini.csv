@@ -1,0 +1,4 @@
+Uploaded_variation;SYMBOL;ENSP;SWISSPROT;Protein_position;Reference;Alternative;CLIN_SIG;Potentially_pathogenic_variant
+rsTEST1;APP;ENSP0000;P05067.1;8;L;P;pathogenic;Yes
+rsTEST2;APP;ENSP0000;P05067.1;17;A;T;uncertain_significance;Other
+rsTEST3;M6PR;ENSP0000;P20645.196;26;Q;R;-;Yes

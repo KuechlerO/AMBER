@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'designer.apps.DesignerConfig',
+    'saffron.apps.SaffronConfig',
 ]
 
 MIDDLEWARE = [
@@ -137,8 +138,21 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATICFILES_DIRS = [
-    BASE_DIR / 'designer'/ 'static',
+    BASE_DIR / 'designer' / 'static',
+    BASE_DIR / 'saffron' / 'static',
 ]
+
+# SignalP 6.0 (local CLI in a Python 3.10 sidecar — not the Django 3.12 env)
+SIGNALP6_BIN = os.getenv('SIGNALP6_BIN', 'signalp6')
+SIGNALP6_MODEL_DIR = os.getenv('SIGNALP6_MODEL_DIR', None)
+SIGNALP_CACHE_DIR = os.getenv('SIGNALP_CACHE_DIR', None)
+SIGNALP_TIMEOUT_SEC = int(os.getenv('SIGNALP_TIMEOUT_SEC', '600'))
+ENSEMBL_TIMEOUT_SEC = int(os.getenv('ENSEMBL_TIMEOUT_SEC', '60'))
+# Gutierrez Guarnizo et al. SP pathogenic-variant catalogue (optional)
+PATHO_SPV_CSV = os.getenv(
+    'PATHO_SPV_CSV',
+    str(BASE_DIR / 'files-archive-dir' / 'patho_spv_in_hs' / 'patho_SPVs_in_hs.csv'),
+)
 
 # ---- Enable subpath deployment ----
 FORCE_SCRIPT_NAME = os.getenv('FORCE_SCRIPT_NAME', None)

@@ -46,6 +46,30 @@ AlphaMissense scores are retrieved from a **PostGreSQL database**.
 * `designer/services.py` – input validation and pipeline entry point
 * `designer/pipeline.py` – core analysis pipeline (guide RNA search, exon filtering, outcome annotation)
 * `designer/models.py` – AlphaMissense database model
+* `saffron/` – **SAFFRON** sibling app (SignalP-based N-terminal / signal-peptide guide design)
+
+---
+
+## SAFFRON (SignalP companion)
+
+**SAFFRON** (*Signal-peptide Assessment Framework For Ranking Of N-terminal edits*) lives at `/saffron/`.
+
+It:
+
+- Accepts a **UniProt / Ensembl ID** (optional missense like `A23V`) or a raw **amino-acid sequence**
+- Runs **SignalP 6.0 fast** on the WT protein (local CLI; see [`saffron/SIGNALP_INSTALL.md`](saffron/SIGNALP_INSTALL.md))
+- Designs **ABE/CBE** guides that introduce missense edits inside the predicted signal peptide
+- Re-scores each unique mutant with SignalP and reports **Δ** vs WT
+- Shows SignalP plot thumbnails (enlarge on click) and CSV/Excel export
+- Annotates guide outcomes with **CLIN_SIG** and paper **potentially pathogenic** labels from
+  [Gutierrez Guarnizo et al. 2023](https://pmc.ncbi.nlm.nih.gov/articles/PMC10583284/)
+  (`files-archive-dir/patho_spv_in_hs/patho_SPVs_in_hs.csv`; override with `PATHO_SPV_CSV`)
+
+AMBER and SAFFRON link to each other in the header navigation.
+
+Without a SignalP installation, SAFFRON uses a deterministic **mock** predictor (`SIGNALP_MOCK=1` forces this) so UI and unit tests still work.
+
+SignalP lives in a **separate** conda env (`environment.signalp.yml`, Python 3.10 + `predector::signalp6`) so it does not conflict with the Django 3.12 stack. See [`saffron/SIGNALP_INSTALL.md`](saffron/SIGNALP_INSTALL.md).
 
 ---
 

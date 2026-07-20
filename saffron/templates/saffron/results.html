@@ -1,0 +1,322 @@
+{% extends "saffron/base.html" %}
+
+{% block content %}
+<div class="card page-card results-card">
+    <h2>Results</h2>
+    {% if signalp_backend == 'mock' %}
+    <p class="signalp-status signalp-status-mock">
+        These plots are <strong>mock approximations</strong> (SignalP 6.0 CLI not configured).
+        Axes match SignalP style (probability vs amino-acid position), but values are not from the DTU model.
+        Install SignalP 6.0 and set <code>SIGNALP6_BIN</code> for authentic plots.
+    </p>
+    {% endif %}
+    {% if message %}
+    <p class="help-text">{{ message }}</p>
+    {% endif %}
+
+    <div class="summary-box summary-box-bubbly">
+        <div class="summary-grid">
+            {% if mode == 'uniprot' %}
+            <div class="summary-item">
+                <span class="summary-label">UniProt</span>
+                <span class="summary-value">{{ data.accession }}</span>
+            </div>
+            {% if data.gene_symbol %}
+            <div class="summary-item">
+                <span class="summary-label">Gene</span>
+                <span class="summary-value">{{ data.gene_symbol }}</span>
+            </div>
+            {% endif %}
+            {% else %}
+            <div class="summary-item">
+                <span class="summary-label">Input</span>
+                <span class="summary-value">AA sequence ({{ data.protein_length }} aa)</span>
+            </div>
+            {% endif %}
+            <div class="summary-item">
+                <span class="summary-label">SignalP type</span>
+                <span class="summary-value">{{ wt.prediction }}</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">SP probability</span>
+                <span class="summary-value">{% if wt.sp_prob != None %}{{ wt.sp_prob|floatformat:3 }}{% else %}—{% endif %}</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">Cleavage site</span>
+                <span class="summary-value">
+                    {% if wt.cs_before %}{{ wt.cs_before }}–{{ wt.cs_after }}{% else %}—{% endif %}
+                </span>
+            </div>
+            {% if sp_span %}
+            <div class="summary-item">
+                <span class="summary-label">SP span</span>
+                <span class="summary-value">{{ sp_span.start }}–{{ sp_span.end }}</span>
+            </div>
+            {% endif %}
+            <div class="summary-item">
+                <span class="summary-label">Guides</span>
+                <span class="summary-value">{{ guide_count }}</span>
+            </div>
+        </div>
+    </div>
+
+    {% if wt.plot_file %}
+    <section class="saffron-wt-plot">
+        <h3 class="results-subtitle">WT SignalP plot</h3>
+        <button type="button" class="plot-thumb-wrap js-open-plot"
+                data-wt-plot="{{ wt.plot_file }}"
+                aria-label="Enlarge WT SignalP plot">
+            <img class="plot-thumb" src="{% url 'saffron_plot' job_file=wt.plot_file %}" alt="WT SignalP plot" width="240" height="140">
+        </button>
+        <p class="help-text">Click the thumbnail to enlarge. Row “View” buttons compare WT vs mutant.</p>
+    </section>
+    {% endif %}
+
+    {% if focus %}
+    <section class="saffron-focus">
+        <h3 class="results-subtitle">Focus mutation {{ focus.label }}</h3>
+        <p>
+            Prediction: <strong>{{ focus.sp_prediction }}</strong>
+            · Δ WT-class:
+            <strong>{% if focus.delta_wt_class_prob != None %}{{ focus.delta_wt_class_prob|floatformat:3 }}{% else %}—{% endif %}</strong>
+            {% if focus.sp_lost %}<span class="badge-sp-lost">SP lost</span>{% endif %}
+        </p>
+        {% if focus.plot_file %}
+        <button type="button" class="link-btn js-open-plot"
+                data-plot-file="{{ focus.plot_file }}"
+                {% if wt.plot_file %}data-wt-plot="{{ wt.plot_file }}"{% endif %}
+                data-mut-label="{{ focus.label }}">Compare WT vs mutant</button>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    {% if guide_rows %}
+    <div class="display-options-toolbar" style="margin: 1rem 0;">
+        <a class="btn" href="{% url 'saffron_download_excel' %}">Download Excel</a>
+        <a class="btn" href="{% url 'saffron_download_csv' %}">Download CSV</a>
+        <a class="btn secondary" href="{% url 'saffron_home' %}">New analysis</a>
+    </div>
+
+    <h3 class="results-subtitle">Guide candidates in the signal peptide ({{ guide_count }})</h3>
+    {% if patho_count %}
+    <p class="help-text">
+        <strong>{{ patho_count }}</strong> guide outcome(s) match a
+        <em>potentially pathogenic</em> signal-peptide variant from
+        <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10583284/" target="_blank" rel="noopener">Gutierrez Guarnizo et al. 2023</a>
+        (highlighted in light red).
+    </p>
+    {% else %}
+    <p class="help-text">
+        CLIN_SIG / paper pathogenicity annotations are joined from
+        <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10583284/" target="_blank" rel="noopener">Gutierrez Guarnizo et al. 2023</a>
+        when the UniProt accession + AA change is present in their catalogue.
+    </p>
+    {% endif %}
+    <div class="table-shell">
+        <table class="results-table saffron-table" id="saffron-results-table">
+            <thead>
+                <tr>
+                    <th class="sortable" data-key="position" data-type="number" title="Click to sort">Pos •</th>
+                    <th class="sortable" data-key="mutation" data-type="text" title="Click to sort">WT→Mut •</th>
+                    <th class="sortable" data-key="editor" data-type="text" title="Click to sort">Editor •</th>
+                    <th class="sortable" data-key="sgrna" data-type="text" title="Click to sort">sgRNA •</th>
+                    <th class="sortable" data-key="pam" data-type="text" title="Click to sort">PAM •</th>
+                    <th class="sortable" data-key="strand" data-type="text" title="Click to sort">Strand •</th>
+                    <th class="sortable" data-key="sp_type" data-type="text" title="Click to sort">SP type •</th>
+                    <th class="sortable" data-key="sp_prob" data-type="number" title="Click to sort">SP prob •</th>
+                    <th class="sortable" data-key="delta" data-type="number" title="Click to sort">Δ WT-class •</th>
+                    <th class="sortable" data-key="cs" data-type="number" title="Click to sort">CS •</th>
+                    <th class="sortable" data-key="clin_sig" data-type="text" title="Ensembl VEP CLIN_SIG from the published catalogue. Click to sort.">CLIN_SIG •</th>
+                    <th class="sortable" data-key="paper_patho" data-type="number" title="Potentially_pathogenic_variant from Gutierrez Guarnizo et al. 2023. Click to sort.">Paper patho. •</th>
+                    <th>Plot</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in guide_rows %}
+                <tr class="{% if row.highlighted %}row-selected{% endif %}{% if row.sp_lost %} row-sp-lost{% endif %}{% if row.paper_pathogenic %} row-paper-pathogenic{% endif %}">
+                    <td data-sort="{{ row.position }}">{{ row.position }}</td>
+                    <td data-sort="{{ row.wt_aa }}{{ row.position }}{{ row.mut_aa }}">{{ row.wt_aa }}→{{ row.mut_aa }}</td>
+                    <td data-sort="{{ row.editor_used }}"><span class="editor-badge">{{ row.editor_used }}</span></td>
+                    <td data-sort="{{ row.sgrna_seq }}"><span class="mono">{{ row.sgrna_seq }}</span></td>
+                    <td data-sort="{{ row.pam }}"><span class="pam-badge">{{ row.pam }}</span></td>
+                    <td data-sort="{{ row.strand }}">{{ row.strand }}</td>
+                    <td data-sort="{{ row.sp_prediction }}">{{ row.sp_prediction }}</td>
+                    <td data-sort="{% if row.sp_prob != None %}{{ row.sp_prob }}{% endif %}">{{ row.sp_prob_display }}</td>
+                    <td data-sort="{% if row.delta_wt_class_prob != None %}{{ row.delta_wt_class_prob }}{% endif %}">{{ row.delta_display }}</td>
+                    <td data-sort="{% if row.cs_before != None %}{{ row.cs_before }}{% endif %}">{{ row.cs_display }}</td>
+                    <td class="clin-sig-cell" data-sort="{{ row.clin_sig_display }}">{{ row.clin_sig_display }}</td>
+                    <td data-sort="{% if row.paper_pathogenic %}2{% elif row.in_patho_catalogue %}1{% else %}0{% endif %}">
+                        {% if row.paper_pathogenic %}
+                        <span class="badge-paper-patho">Yes</span>
+                        {% else %}
+                        {{ row.paper_pathogenic_display }}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if row.plot_file %}
+                        <button type="button" class="link-btn js-open-plot"
+                                data-plot-file="{{ row.plot_file }}"
+                                {% if wt.plot_file %}data-wt-plot="{{ wt.plot_file }}"{% endif %}
+                                data-mut-label="{{ row.wt_aa }}{{ row.position }}{{ row.mut_aa }}">View</button>
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% elif guides_available and not no_sp %}
+    <p class="help-text">No missense-introducing guides found in the predicted SP region for these settings.</p>
+    {% endif %}
+</div>
+
+<dialog id="plot-modal" class="saffron-plot-modal">
+    <form method="dialog" class="plot-modal-inner">
+        <div class="plot-modal-header">
+            <h3 id="plot-modal-title" class="plot-modal-title">SignalP plots</h3>
+            <button type="submit" class="btn secondary" value="close">Close</button>
+        </div>
+        <div class="plot-compare" id="plot-compare">
+            <figure class="plot-panel" id="plot-panel-wt" hidden>
+                <figcaption>Wild type</figcaption>
+                <img id="plot-modal-wt" alt="WT SignalP plot" width="720" height="420">
+            </figure>
+            <figure class="plot-panel" id="plot-panel-mut" hidden>
+                <figcaption id="plot-mut-caption">Mutant</figcaption>
+                <img id="plot-modal-mut" alt="Mutant SignalP plot" width="720" height="420">
+            </figure>
+        </div>
+    </form>
+</dialog>
+
+<script>
+(function () {
+    var plotBase = "{% url 'saffron_plot' job_file='__FILE__' %}";
+    function plotUrl(name) {
+        // Keep "/" path segments; only encode each segment (job-relative plot paths).
+        var encoded = String(name).split('/').map(encodeURIComponent).join('/');
+        return plotBase.replace('__FILE__', encoded);
+    }
+    var modal = document.getElementById('plot-modal');
+    var titleEl = document.getElementById('plot-modal-title');
+    var panelWt = document.getElementById('plot-panel-wt');
+    var panelMut = document.getElementById('plot-panel-mut');
+    var imgWt = document.getElementById('plot-modal-wt');
+    var imgMut = document.getElementById('plot-modal-mut');
+    var mutCaption = document.getElementById('plot-mut-caption');
+    var compare = document.getElementById('plot-compare');
+
+    function setPanel(panel, img, file) {
+        if (file) {
+            img.src = plotUrl(file);
+            panel.hidden = false;
+            return true;
+        }
+        img.removeAttribute('src');
+        panel.hidden = true;
+        return false;
+    }
+
+    function openPlots(opts) {
+        if (!modal) return;
+        var wt = opts.wt || '';
+        var mut = opts.mut || '';
+        var label = opts.label || '';
+        if (!wt && !mut) return;
+
+        var hasWt = setPanel(panelWt, imgWt, wt);
+        var hasMut = setPanel(panelMut, imgMut, mut);
+        if (hasMut) {
+            mutCaption.textContent = label ? ('Mutant (' + label + ')') : 'Mutant';
+        }
+        compare.classList.toggle('plot-compare-single', !(hasWt && hasMut));
+
+        if (hasWt && hasMut) {
+            titleEl.textContent = label ? ('WT vs ' + label) : 'WT vs mutant';
+        } else if (hasMut) {
+            titleEl.textContent = label ? ('Mutant ' + label) : 'Mutant SignalP plot';
+        } else {
+            titleEl.textContent = 'WT SignalP plot';
+        }
+
+        if (typeof modal.showModal === 'function') {
+            modal.showModal();
+        } else {
+            window.open(plotUrl(mut || wt), '_blank');
+        }
+    }
+
+    document.querySelectorAll('.js-open-plot').forEach(function (el) {
+        el.addEventListener('click', function () {
+            openPlots({
+                wt: el.getAttribute('data-wt-plot') || '',
+                mut: el.getAttribute('data-plot-file') || '',
+                label: el.getAttribute('data-mut-label') || ''
+            });
+        });
+    });
+})();
+
+(function () {
+    var table = document.getElementById('saffron-results-table');
+    if (!table) return;
+    var tbody = table.querySelector('tbody');
+    var headers = table.querySelectorAll('th.sortable');
+    var activeKey = null;
+    var direction = 1;
+
+    function sortValue(cell, type) {
+        var raw = (cell && cell.getAttribute('data-sort')) || '';
+        raw = String(raw).trim();
+        if (type === 'number') {
+            if (raw === '' || raw === '—') return null;
+            var n = parseFloat(raw);
+            return isNaN(n) ? null : n;
+        }
+        return raw.toLowerCase();
+    }
+
+    function compare(a, b, type, dir) {
+        var av = sortValue(a, type);
+        var bv = sortValue(b, type);
+        var aEmpty = av === null || av === '';
+        var bEmpty = bv === null || bv === '';
+        if (aEmpty && bEmpty) return 0;
+        if (aEmpty) return 1;
+        if (bEmpty) return -1;
+        if (type === 'number') return (av - bv) * dir;
+        return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+    }
+
+    headers.forEach(function (header) {
+        header.addEventListener('click', function () {
+            var key = header.getAttribute('data-key');
+            var type = header.getAttribute('data-type') || 'text';
+            var index = header.cellIndex;
+            var rows = Array.from(tbody.querySelectorAll('tr'));
+
+            if (activeKey === key) {
+                direction *= -1;
+            } else {
+                activeKey = key;
+                direction = 1;
+            }
+
+            rows.sort(function (ra, rb) {
+                return compare(ra.children[index], rb.children[index], type, direction);
+            });
+            rows.forEach(function (row) { tbody.appendChild(row); });
+
+            headers.forEach(function (h) {
+                var base = h.textContent.replace(/[▲▼•]/g, '').trim();
+                if (h.getAttribute('data-key') === activeKey) {
+                    h.textContent = base + (direction === 1 ? ' ▲' : ' ▼');
+                } else {
+                    h.textContent = base + ' •';
+                }
+            });
+        });
+    });
+})();
+</script>
+{% endblock %}
