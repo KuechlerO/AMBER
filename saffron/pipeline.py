@@ -253,6 +253,14 @@ def design_sp_guides(
     return rows
 
 
+def _sp_subregion(position: int, wt_regions: list[dict]) -> str | None:
+    for r in wt_regions:
+        feat = r['feature'].lower()
+        if feat in ('n-region', 'h-region', 'c-region') and r['start'] <= position <= r['end']:
+            return feat[0].upper()
+    return None
+
+
 def _mutant_protein(wt_seq: str, position: int, mut_aa: str) -> str:
     return wt_seq[: position - 1] + mut_aa + wt_seq[position:]
 
@@ -320,6 +328,7 @@ def run_sequence_analysis(
             'cs_before': preds['FOCUS'].cs_before,
             'cs_prob': preds['FOCUS'].cs_prob,
             'plot_path': preds['FOCUS'].plot_path,
+            'sp_subregion': _sp_subregion(focus['position'], wt_pred.regions or []),
             **deltas,
         }
 
@@ -423,6 +432,9 @@ def run_uniprot_analysis(
         mut_preds = run_signalp(mutant_seqs, organism=organism, job_id=f'{job_id}_mut', want_plots=True)
 
     enriched = _attach_signalp_to_rows(guide_rows, seq, wt_pred, mut_preds)
+    wt_regions = wt_pred.regions or []
+    for row in enriched:
+        row['sp_subregion'] = _sp_subregion(row['position'], wt_regions)
     annotate_guide_rows(enriched, accession=resolved['accession'])
 
     focus_row = None
@@ -446,6 +458,7 @@ def run_uniprot_analysis(
                 'cs_prob': mut_preds[focus_extra].cs_prob,
                 'plot_path': mut_preds[focus_extra].plot_path,
                 'sgrna_seq': None,
+                'sp_subregion': _sp_subregion(pos, wt_regions),
                 **deltas,
             }
             annotate_guide_rows([focus_row], accession=resolved['accession'])

@@ -22,9 +22,29 @@
         <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10583284/" target="_blank" rel="noopener">
             Gutierrez Guarnizo et al., <em>NAR Genom Bioinform</em> (2023)
         </a>
+        (Supplementary File&nbsp;S3, sheet <em>SupplementaryFileS3_PPVclass</em>)
         when the UniProt accession and amino-acid change appear in their published catalogue.
         Matching “Yes” rows are highlighted in light red in the results table.
     </p>
+    <h3>Row highlights</h3>
+    <p>Guide rows in the results table can be highlighted in three ways:</p>
+    <ul>
+        <li>
+            <strong>Light red row</strong> — the amino-acid change matches a
+            <em>potentially pathogenic</em> entry in Supplementary File&nbsp;S3
+            (sheet <em>SupplementaryFileS3_PPVclass</em>, column
+            <code>Potentially_pathogenic_variant = Yes</code>).
+        </li>
+        <li>
+            <strong>Amber row tint + “SP lost” badge</strong> — SignalP predicted a signal peptide
+            for the wild-type protein, but the mutant is predicted as <strong>OTHER</strong>
+            (no signal peptide). Shown in the <strong>SP lost</strong> column.
+        </li>
+        <li>
+            <strong>Accent outline</strong> — the row matches an optional focus mutation you entered
+            on the home page (e.g. <code>A11T</code>).
+        </li>
+    </ul>
     <p><a class="btn" href="{% url 'saffron_home' %}">Start analysis</a></p>
 </div>
 {% endblock %}

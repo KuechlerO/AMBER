@@ -55,8 +55,8 @@
             <div class="form-group">
                 <label for="uniprot_id">UniProt ID or Ensembl ID</label>
                 <div class="input-with-action">
-                    <input type="text" id="uniprot_id" name="uniprot_id" placeholder="e.g. P05067" value="P05067">
-                    <button type="button" class="btn btn-example" id="example-btn" title="Example (APP / P05067)">Example</button>
+                    <input type="text" id="uniprot_id" name="uniprot_id" placeholder="e.g. P09668" value="P09668">
+                    <button type="button" class="btn btn-example" id="example-btn" title="Example (CTSH / P09668)">Example</button>
                 </div>
                 <small class="help-text">Whitespace is ignored. Example: amyloid precursor protein (has a classical SP).</small>
             </div>
@@ -153,7 +153,7 @@
     document.getElementById('example-btn').addEventListener('click', function () {
         modeUniprot.checked = true;
         syncMode();
-        uniprotInput.value = 'P05067';
+        uniprotInput.value = 'P09668';
         document.getElementById('mutation').value = '';
     });
 })();

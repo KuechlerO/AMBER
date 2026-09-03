@@ -6,15 +6,14 @@ import csv
 import io
 from pathlib import Path
 
-from django.http import FileResponse, Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET
 from openpyxl import Workbook
 
-from designer.services import UserInputError
-
 from . import result_store
-from .services import run_saffron_analysis
+from .analysis_jobs import get_status, start_analysis
+from .result_store import session_key_from_request
 from .signalp_client import signalp_cache_dir, signalp_status
 
 
@@ -25,7 +24,15 @@ def home(request):
 def loading(request):
     if request.method != 'POST':
         return redirect('saffron_home')
-    return render(request, 'saffron/loading.html', {'request': request})
+    form = _form_from_post(request.POST)
+    start_analysis(session_key_from_request(request), form)
+    return render(request, 'saffron/loading.html')
+
+
+@require_GET
+def analysis_status(request):
+    """JSON polling endpoint while background analysis runs."""
+    return JsonResponse(get_status(session_key_from_request(request)))
 
 
 def _form_from_post(post) -> dict:
@@ -50,22 +57,20 @@ def results(request):
             return redirect('saffron_home')
         return render(request, 'saffron/results.html', _results_context(data))
 
-    form = _form_from_post(request.POST)
-    try:
-        payload = run_saffron_analysis(form)
-    except UserInputError as exc:
-        return render(request, 'saffron/error.html', {'message': str(exc)}, status=400)
-    except Exception as exc:  # noqa: BLE001 — show friendly page for unexpected SignalP/runtime errors
+    # Legacy synchronous POST — redirect into async flow
+    status = get_status(session_key_from_request(request))
+    if status.get('status') == 'done':
+        return redirect('saffron_results')
+    if status.get('status') == 'running':
+        return render(request, 'saffron/loading.html')
+    if status.get('status') == 'error':
         return render(
             request,
             'saffron/error.html',
-            {'message': f'Analysis failed: {exc}'},
-            status=500,
+            {'message': status.get('error') or 'Analysis failed.'},
+            status=400,
         )
-
-    payload['form_data'] = form
-    result_store.save_analysis_results(request, payload=payload)
-    return render(request, 'saffron/results.html', _results_context(payload))
+    return redirect('saffron_home')
 
 
 def _fmt(val, digits=3):
@@ -101,6 +106,7 @@ def _results_context(data: dict) -> dict:
     wt['plot_file'] = _plot_ref(wt.get('plot_path'))
     rows = []
     patho_count = 0
+    sp_lost_count = 0
     for raw in data.get('guide_rows') or []:
         r = dict(raw)
         r['sp_prob_display'] = _fmt(r.get('sp_prob'))
@@ -111,7 +117,13 @@ def _results_context(data: dict) -> dict:
         r['cs_delta_display'] = _fmt(r.get('cs_delta'), digits=0) if r.get('cs_delta') is not None else '—'
         r['plot_file'] = _plot_ref(r.get('plot_path'))
         clin = r.get('clin_sig')
+        r['sp_subregion_display'] = r.get('sp_subregion') or '—'
         r['clin_sig_display'] = clin if clin else '—'
+        if r.get('sp_lost'):
+            r['sp_lost_display'] = 'Yes'
+            sp_lost_count += 1
+        else:
+            r['sp_lost_display'] = '—'
         if r.get('paper_pathogenic'):
             r['paper_pathogenic_display'] = 'Yes'
             patho_count += 1
@@ -126,6 +138,7 @@ def _results_context(data: dict) -> dict:
         focus = dict(focus)
         focus['plot_file'] = _plot_ref(focus.get('plot_path'))
         clin = focus.get('clin_sig')
+        focus['sp_subregion_display'] = focus.get('sp_subregion') or '—'
         focus['clin_sig_display'] = clin if clin else '—'
         if focus.get('paper_pathogenic'):
             focus['paper_pathogenic_display'] = 'Yes'
@@ -141,6 +154,7 @@ def _results_context(data: dict) -> dict:
         'guide_rows': rows,
         'guide_count': len(rows),
         'patho_count': patho_count,
+        'sp_lost_count': sp_lost_count,
         'focus': focus,
         'sp_span': data.get('sp_span'),
         'mode': data.get('mode'),
@@ -196,7 +210,7 @@ def download_csv(request):
     buf = io.StringIO()
     fields = [
         'position', 'wt_aa', 'mut_aa', 'editor_used', 'sgrna_seq', 'protospacer',
-        'pam', 'strand', 'sp_prediction', 'sp_prob', 'delta_wt_class_prob',
+        'pam', 'strand', 'sp_subregion', 'sp_prediction', 'sp_prob', 'delta_wt_class_prob',
         'cs_before', 'cs_prob', 'cs_delta', 'sp_lost', 'highlighted',
         'clin_sig', 'paper_pathogenic', 'in_patho_catalogue',
     ]
@@ -220,7 +234,7 @@ def download_excel(request):
     ws.title = 'SAFFRON'
     headers = [
         'Position', 'WT AA', 'Mut AA', 'Editor', 'sgRNA', 'Protospacer', 'PAM', 'Strand',
-        'SP prediction', 'SP prob', 'Δ WT-class prob', 'CS before', 'CS prob', 'CS Δ', 'SP lost',
+        'SP region', 'SP prediction', 'SP prob', 'Δ WT-class prob', 'CS before', 'CS prob', 'CS Δ', 'SP lost',
         'ClinVar/VEP CLIN_SIG', 'Paper potentially pathogenic',
     ]
     ws.append(headers)
@@ -228,6 +242,7 @@ def download_excel(request):
         ws.append([
             r.get('position'), r.get('wt_aa'), r.get('mut_aa'), r.get('editor_used'),
             r.get('sgrna_seq'), r.get('protospacer'), r.get('pam'), r.get('strand'),
+            r.get('sp_subregion') or '',
             r.get('sp_prediction'), r.get('sp_prob'), r.get('delta_wt_class_prob'),
             r.get('cs_before'), r.get('cs_prob'), r.get('cs_delta'), r.get('sp_lost'),
             r.get('clin_sig') or '',

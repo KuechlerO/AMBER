@@ -56,32 +56,68 @@
         <h3 class="results-subtitle">Guide coverage</h3>
         <div class="coverage-stats-list">
             <div class="coverage-stat-row">
-                <span class="coverage-stat-label">Protein length (AA):</span>
+                <span class="coverage-stat-label">
+                    Protein length (AA)
+                    <span class="coverage-stat-tip" tabindex="0" aria-label="Help"
+                          data-tip="Total number of amino acids in the analysed protein sequence.">?</span>
+                </span>
                 <span class="coverage-stat-value">{{ coverage_stats.protein_length }}</span>
             </div>
             <div class="coverage-stat-row">
-                <span class="coverage-stat-label">Editable positions (current table filter):</span>
-                <span class="coverage-stat-value">{{ coverage_stats.editable_positions_display|default:coverage_stats.editable_positions }}</span>
+                <span class="coverage-stat-label">
+                    Positions with guides (all analysis)
+                    <span class="coverage-stat-tip" tabindex="0" aria-label="Help"
+                          data-tip="Unique amino-acid positions where at least one guide was found. Uses your duplicate-mode setting; ignores the table score filter.">?</span>
+                </span>
+                <span class="coverage-stat-value">{{ coverage_stats.editable_positions }}</span>
             </div>
-            <div class="coverage-stat-row">
-                <span class="coverage-stat-label">Coverage (current table filter):</span>
-                <span class="coverage-stat-value">{{ coverage_stats.coverage_pct_display|default:coverage_stats.coverage_pct }}%</span>
-            </div>
-            <div class="coverage-stat-row">
-                <span class="coverage-stat-label">Positions ≥ cutoff (all guides):</span>
+            <div class="coverage-stat-row coverage-stat-row-indented">
+                <span class="coverage-stat-label">
+                    ≥ cutoff (best score)
+                    <span class="coverage-stat-tip" tabindex="0" aria-label="Help"
+                          data-tip="Positions where the highest AlphaMissense score among all guides at that site is ≥ {{ coverage_stats.cutoff }}. Score filter ignored.">?</span>
+                </span>
                 <span class="coverage-stat-value">{{ coverage_stats.above_cutoff_positions }}</span>
             </div>
-            <div class="coverage-stat-row">
-                <span class="coverage-stat-label">Positions &lt; cutoff (all guides):</span>
+            <div class="coverage-stat-row coverage-stat-row-indented">
+                <span class="coverage-stat-label">
+                    &lt; cutoff (best score)
+                    <span class="coverage-stat-tip" tabindex="0" aria-label="Help"
+                          data-tip="Positions with guides, but the best AlphaMissense score at that site is &lt; {{ coverage_stats.cutoff }}. Score filter ignored.">?</span>
+                </span>
                 <span class="coverage-stat-value">{{ coverage_stats.below_cutoff_positions }}</span>
             </div>
             <div class="coverage-stat-row">
-                <span class="coverage-stat-label">Guide candidates (current table):</span>
+                <span class="coverage-stat-label">
+                    Unique positions in table
+                    <span class="coverage-stat-tip" tabindex="0" aria-label="Help"
+                          data-tip="Unique amino-acid positions currently visible in the results table after your score filter and duplicate-mode settings.">?</span>
+                </span>
+                <span class="coverage-stat-value">{{ coverage_stats.editable_positions_display|default:coverage_stats.editable_positions }}</span>
+            </div>
+            <div class="coverage-stat-row">
+                <span class="coverage-stat-label">
+                    Guide candidates (rows)
+                    <span class="coverage-stat-tip" tabindex="0" aria-label="Help"
+                          data-tip="Number of rows in the results table. One position can appear multiple times (different editors, sgRNAs, or mutations).">?</span>
+                </span>
                 <span class="coverage-stat-value">{{ coverage_stats.guide_count }}</span>
+            </div>
+            <div class="coverage-stat-row">
+                <span class="coverage-stat-label">
+                    Coverage (% of protein)
+                    <span class="coverage-stat-tip" tabindex="0" aria-label="Help"
+                          data-tip="Share of the protein length covered by unique positions in the current table (unique positions ÷ protein length).">?</span>
+                </span>
+                <span class="coverage-stat-value">{{ coverage_stats.coverage_pct_display|default:coverage_stats.coverage_pct }}%</span>
             </div>
             {% if coverage_stats.no_guide_count %}
             <div class="coverage-stat-row">
-                <span class="coverage-stat-label">Pathogenic without guide:</span>
+                <span class="coverage-stat-label">
+                    Pathogenic without guide
+                    <span class="coverage-stat-tip" tabindex="0" aria-label="Help"
+                          data-tip="Pathogenic positions above your analysis threshold for which no qualifying guide RNA could be designed (PAM, editing window, or outcome rules).">?</span>
+                </span>
                 <span class="coverage-stat-value">{{ coverage_stats.no_guide_count }}</span>
             </div>
             {% endif %}
@@ -335,9 +371,14 @@
     <section class="screen-plot-section" style="margin-top: 40px;">
         <h3 class="results-subtitle">Screen enrichment plots (optional)</h3>
         <p class="help-text">
-            For genes in the NGG screen library (Supplementary Table 1). LFC panels for TNFa, IFNG, PD1, and CD25
-            (ABE and CBE) from the publication screen — not your AlphaMissense run.
-            Domains and colored AMBER guides are shown again at the bottom.
+            These plots show log-fold-change (LFC) enrichment from the NGG base-editing screen in
+            <a href="https://www.nature.com/articles/s41586-023-06835-6" target="_blank" rel="noopener">
+                Schmidt et al., <em>Nature</em> (2024)
+            </a>
+            — a large-scale mutagenesis map of ~385 T cell–function genes in primary human T cells.
+            Panels cover TNFα, IFNG, PD1, and CD25 readouts (ABE and CBE); gene membership follows
+            Supplementary Table&nbsp;1 from that study. This is published screen data, not output from
+            your AlphaMissense run. Domains and colored AMBER guides are shown again at the bottom.
         </p>
         {% if screen_plot_available %}
             {% if screen_plot_lookup_uniprot and screen_plot_lookup_uniprot != form_data.uniprot_id %}

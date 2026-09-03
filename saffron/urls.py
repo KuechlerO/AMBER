@@ -5,6 +5,7 @@ from . import views
 urlpatterns = [
     path('', views.home, name='saffron_home'),
     path('loading/', views.loading, name='saffron_loading'),
+    path('analysis-status/', views.analysis_status, name='saffron_analysis_status'),
     path('results/', views.results, name='saffron_results'),
     path('download/csv/', views.download_csv, name='saffron_download_csv'),
     path('download/excel/', views.download_excel, name='saffron_download_excel'),

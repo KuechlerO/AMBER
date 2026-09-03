@@ -1,7 +1,8 @@
 """Gutierrez Guarnizo et al. (2023) pathogenic signal-peptide variant catalogue.
 
 Source: NAR Genomics and Bioinformatics — PMC10583284
-CSV: patho_SPVs_in_hs.csv (semicolon-delimited VEP + paper annotations).
+Original data: Supplementary File S3, sheet SupplementaryFileS3_PPVclass
+Local CSV: patho_SPVs_in_hs.csv (semicolon-delimited VEP + paper annotations).
 """
 
 from __future__ import annotations
@@ -161,5 +162,6 @@ def annotate_guide_rows(
 def catalogue_citation() -> str:
     return (
         'Gutierrez Guarnizo et al., NAR Genom Bioinform (2023) — '
-        'Pathogenic signal peptide variants in the human genome (PMC10583284)'
+        'Pathogenic signal peptide variants in the human genome (PMC10583284); '
+        'Supplementary File S3, sheet SupplementaryFileS3_PPVclass'
     )

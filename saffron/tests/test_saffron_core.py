@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from django.test import SimpleTestCase, Client, override_settings
+from django.test import SimpleTestCase, Client, TestCase, override_settings
 
 from saffron.pipeline import parse_mutation, apply_mutation, normalize_aa_sequence, SaffronUserError
 from saffron.patho_spv import (
@@ -131,3 +131,51 @@ class SaffronViewSmokeTests(SimpleTestCase):
         c = Client()
         r = c.get('/saffron/about/')
         self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Row highlights')
+        self.assertContains(r, 'SP lost')
+
+
+class SaffronResultsHighlightTests(TestCase):
+    def test_results_shows_sp_lost_column_and_legend(self):
+        from saffron.result_store import save_analysis_results_by_key
+
+        c = Client()
+        c.get('/saffron/')
+        save_analysis_results_by_key(
+            c.session.session_key,
+            payload={
+                'guide_rows': [{
+                    'position': 5,
+                    'wt_aa': 'A',
+                    'mut_aa': 'V',
+                    'editor_used': 'ABE',
+                    'sgrna_seq': 'ATCGATCGATCG',
+                    'pam': 'NGG',
+                    'strand': '+',
+                    'sp_prediction': 'OTHER',
+                    'sp_prob': 0.12,
+                    'delta_wt_class_prob': -0.75,
+                    'cs_before': 22,
+                    'cs_after': None,
+                    'sp_lost': True,
+                    'paper_pathogenic': False,
+                    'highlighted': False,
+                }],
+                'wt_signalp': {
+                    'prediction': 'SP',
+                    'sp_prob': 0.91,
+                    'cs_before': 22,
+                    'cs_after': 23,
+                },
+                'guides_available': True,
+                'no_sp': False,
+                'sp_span': {'start': 1, 'end': 22},
+                'form_data': {},
+            },
+        )
+        r = c.get('/saffron/results/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'row-highlight-legend')
+        self.assertContains(r, 'WT predicted signal peptide, mutant predicted')
+        self.assertContains(r, 'badge-sp-lost')
+        self.assertContains(r, 'row-sp-lost')

@@ -317,7 +317,12 @@ def _mock_predict(sequences: dict[str, str]) -> dict[str, SignalPPrediction]:
                 cs_prob=round(0.7 + hydro_frac * 0.2, 4),
                 sp_start=1,
                 sp_end=cs,
-                regions=[{'feature': 'signal_peptide', 'start': 1, 'end': cs}],
+                regions=[
+                    {'feature': 'signal_peptide', 'start': 1, 'end': cs},
+                    {'feature': 'n-region', 'start': 1, 'end': max(1, cs // 4)},
+                    {'feature': 'h-region', 'start': max(1, cs // 4) + 1, 'end': cs - max(1, cs // 5)},
+                    {'feature': 'c-region', 'start': cs - max(1, cs // 5) + 1, 'end': cs},
+                ],
             )
         else:
             pred = SignalPPrediction(

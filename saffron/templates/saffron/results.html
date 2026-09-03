@@ -101,17 +101,42 @@
     {% if patho_count %}
     <p class="help-text">
         <strong>{{ patho_count }}</strong> guide outcome(s) match a
-        <em>potentially pathogenic</em> signal-peptide variant from
+        <em>potentially pathogenic</em> signal-peptide variant (highlighted in light red) from
         <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10583284/" target="_blank" rel="noopener">Gutierrez Guarnizo et al. 2023</a>
-        (highlighted in light red).
+        (Supplementary File&nbsp;S3, sheet <em>SupplementaryFileS3_PPVclass</em>).
     </p>
     {% else %}
     <p class="help-text">
         CLIN_SIG / paper pathogenicity annotations are joined from
         <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10583284/" target="_blank" rel="noopener">Gutierrez Guarnizo et al. 2023</a>
+        (Supplementary File&nbsp;S3, sheet <em>SupplementaryFileS3_PPVclass</em>)
         when the UniProt accession + AA change is present in their catalogue.
     </p>
     {% endif %}
+    <div class="row-highlight-legend" aria-label="Row highlight legend">
+        <p class="row-highlight-legend-title">Row highlights</p>
+        <ul class="row-highlight-legend-list">
+            <li>
+                <span class="legend-swatch legend-swatch-patho"></span>
+                <span class="badge-paper-patho">Yes</span>
+                <span>Potentially pathogenic variant (<em>SupplementaryFileS3_PPVclass</em>, <code>Yes</code>)</span>
+            </li>
+            <li>
+                <span class="legend-swatch legend-swatch-sp-lost"></span>
+                <span class="badge-sp-lost">SP lost</span>
+                <span>WT predicted signal peptide, mutant predicted <strong>OTHER</strong></span>
+            </li>
+            <li>
+                <span class="legend-swatch legend-swatch-focus"></span>
+                <span>Accent outline — matches your optional focus mutation input</span>
+            </li>
+        </ul>
+        {% if sp_lost_count %}
+        <p class="help-text row-highlight-legend-note">
+            <strong>{{ sp_lost_count }}</strong> guide outcome(s) lose the signal-peptide prediction (amber row tint).
+        </p>
+        {% endif %}
+    </div>
     <div class="table-shell">
         <table class="results-table saffron-table" id="saffron-results-table">
             <thead>
@@ -122,12 +147,14 @@
                     <th class="sortable" data-key="sgrna" data-type="text" title="Click to sort">sgRNA •</th>
                     <th class="sortable" data-key="pam" data-type="text" title="Click to sort">PAM •</th>
                     <th class="sortable" data-key="strand" data-type="text" title="Click to sort">Strand •</th>
+                    <th class="sortable" data-key="sp_region" data-type="text" title="WT signal peptide sub-region (N/H/C). Click to sort.">SP region •</th>
                     <th class="sortable" data-key="sp_type" data-type="text" title="Click to sort">SP type •</th>
+                    <th class="sortable" data-key="sp_lost" data-type="number" title="WT predicted signal peptide, mutant predicted OTHER. Click to sort.">SP lost •</th>
                     <th class="sortable" data-key="sp_prob" data-type="number" title="Click to sort">SP prob •</th>
                     <th class="sortable" data-key="delta" data-type="number" title="Click to sort">Δ WT-class •</th>
                     <th class="sortable" data-key="cs" data-type="number" title="Click to sort">CS •</th>
                     <th class="sortable" data-key="clin_sig" data-type="text" title="Ensembl VEP CLIN_SIG from the published catalogue. Click to sort.">CLIN_SIG •</th>
-                    <th class="sortable" data-key="paper_patho" data-type="number" title="Potentially_pathogenic_variant from Gutierrez Guarnizo et al. 2023. Click to sort.">Paper patho. •</th>
+                    <th class="sortable" data-key="paper_patho" data-type="number" title="Potentially_pathogenic_variant from Gutierrez Guarnizo et al. 2023 (Supplementary File S3, sheet SupplementaryFileS3_PPVclass). Click to sort.">Paper patho. •</th>
                     <th>Plot</th>
                 </tr>
             </thead>
@@ -140,7 +167,15 @@
                     <td data-sort="{{ row.sgrna_seq }}"><span class="mono">{{ row.sgrna_seq }}</span></td>
                     <td data-sort="{{ row.pam }}"><span class="pam-badge">{{ row.pam }}</span></td>
                     <td data-sort="{{ row.strand }}">{{ row.strand }}</td>
+                    <td data-sort="{{ row.sp_subregion_display }}">{{ row.sp_subregion_display }}</td>
                     <td data-sort="{{ row.sp_prediction }}">{{ row.sp_prediction }}</td>
+                    <td data-sort="{% if row.sp_lost %}1{% else %}0{% endif %}">
+                        {% if row.sp_lost %}
+                        <span class="badge-sp-lost">SP lost</span>
+                        {% else %}
+                        {{ row.sp_lost_display }}
+                        {% endif %}
+                    </td>
                     <td data-sort="{% if row.sp_prob != None %}{{ row.sp_prob }}{% endif %}">{{ row.sp_prob_display }}</td>
                     <td data-sort="{% if row.delta_wt_class_prob != None %}{{ row.delta_wt_class_prob }}{% endif %}">{{ row.delta_display }}</td>
                     <td data-sort="{% if row.cs_before != None %}{{ row.cs_before }}{% endif %}">{{ row.cs_display }}</td>
@@ -204,7 +239,6 @@
     var imgWt = document.getElementById('plot-modal-wt');
     var imgMut = document.getElementById('plot-modal-mut');
     var mutCaption = document.getElementById('plot-mut-caption');
-    var compare = document.getElementById('plot-compare');
 
     function setPanel(panel, img, file) {
         if (file) {
@@ -229,7 +263,6 @@
         if (hasMut) {
             mutCaption.textContent = label ? ('Mutant (' + label + ')') : 'Mutant';
         }
-        compare.classList.toggle('plot-compare-single', !(hasWt && hasMut));
 
         if (hasWt && hasMut) {
             titleEl.textContent = label ? ('WT vs ' + label) : 'WT vs mutant';

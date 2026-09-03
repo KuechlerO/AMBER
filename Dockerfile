@@ -51,7 +51,7 @@ CMD ["micromamba", "run", "-n", "base", "bash", "-c", \
      "mkdir -p /app/data/cache /tmp/amber_django_cache /tmp/saffron_signalp; \
      chmod 666 db.sqlite3 2>/dev/null || true; \
      chmod -R 777 /app/data /tmp/amber_django_cache /tmp/saffron_signalp 2>/dev/null || true; \
-     if [ -n \"$${SIGNALP6_TARBALL:-}\" ] && [ -f \"$${SIGNALP6_TARBALL}\" ]; then \
-       /opt/conda/envs/signalp6/bin/signalp6-register \"$${SIGNALP6_TARBALL}\" || true; \
+     if [ -x /app/scripts/signalp6_register_if_needed.sh ]; then \
+       /app/scripts/signalp6_register_if_needed.sh; \
      fi; \
      python manage.py migrate; python manage.py runserver 0.0.0.0:8000"]

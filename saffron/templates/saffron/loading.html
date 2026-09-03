@@ -3,25 +3,55 @@
 {% block content %}
 <div class="card page-card results-card" style="text-align: center; padding: 40px;">
     <h2>Running SAFFRON</h2>
-    <p style="margin-top: 10px;">
+    <p id="loading-status" style="margin-top: 10px;">
         SignalP scoring and guide design are in progress.<br>
-        This can take longer when many SP-region mutants are scored.
+        This can take several minutes when many SP-region mutants are scored.
     </p>
     <div class="spinner-modern"></div>
-    <p class="help-text" style="margin-top: 20px;">Please do not refresh the page.</p>
-
-    <form id="hiddenForm" method="POST" action="{% url 'saffron_results' %}">
-        {% csrf_token %}
-        {% for key, values in request.POST.lists %}
-            {% for value in values %}
-                <input type="hidden" name="{{ key }}" value="{{ value }}">
-            {% endfor %}
-        {% endfor %}
-    </form>
+    <p class="help-text" style="margin-top: 20px;">Please keep this tab open. You can safely wait — the analysis runs in the background.</p>
+    <p id="loading-error" class="help-text" style="margin-top: 16px; color: #b91c1c; display: none;"></p>
+    <p id="loading-error-actions" style="margin-top: 12px; display: none;">
+        <a class="btn secondary" href="{% url 'saffron_home' %}">Back to start</a>
+    </p>
 </div>
 <script>
-    setTimeout(function () {
-        document.getElementById('hiddenForm').submit();
-    }, 300);
+(function () {
+    var statusUrl = "{% url 'saffron_analysis_status' %}";
+    var resultsUrl = "{% url 'saffron_results' %}";
+    var statusEl = document.getElementById('loading-status');
+    var errorEl = document.getElementById('loading-error');
+    var errorActions = document.getElementById('loading-error-actions');
+    var pollMs = 2000;
+
+    function poll() {
+        fetch(statusUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                var status = data.status || 'idle';
+                if (status === 'done') {
+                    window.location.href = resultsUrl;
+                    return;
+                }
+                if (status === 'error') {
+                    if (statusEl) statusEl.style.display = 'none';
+                    if (errorEl) {
+                        errorEl.textContent = data.error || 'Analysis failed.';
+                        errorEl.style.display = 'block';
+                    }
+                    if (errorActions) errorActions.style.display = 'block';
+                    return;
+                }
+                if (status === 'running' && statusEl) {
+                    statusEl.innerHTML = 'SignalP scoring and guide design are in progress.<br>This can take several minutes when many SP-region mutants are scored.';
+                }
+                setTimeout(poll, pollMs);
+            })
+            .catch(function () {
+                setTimeout(poll, pollMs);
+            });
+    }
+
+    poll();
+})();
 </script>
 {% endblock %}

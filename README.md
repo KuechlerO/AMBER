@@ -61,9 +61,11 @@ It:
 - Designs **ABE/CBE** guides that introduce missense edits inside the predicted signal peptide
 - Re-scores each unique mutant with SignalP and reports **Δ** vs WT
 - Shows SignalP plot thumbnails (enlarge on click) and CSV/Excel export
+- Runs analyses **in the background** (loading page polls until done) so long SignalP jobs do not hit gateway timeouts
 - Annotates guide outcomes with **CLIN_SIG** and paper **potentially pathogenic** labels from
   [Gutierrez Guarnizo et al. 2023](https://pmc.ncbi.nlm.nih.gov/articles/PMC10583284/)
-  (`files-archive-dir/patho_spv_in_hs/patho_SPVs_in_hs.csv`; override with `PATHO_SPV_CSV`)
+  (Supplementary File S3, sheet `SupplementaryFileS3_PPVclass`; loaded as
+  `files-archive-dir/patho_spv_in_hs/patho_SPVs_in_hs.csv`; override with `PATHO_SPV_CSV`)
 
 AMBER and SAFFRON link to each other in the header navigation.
 

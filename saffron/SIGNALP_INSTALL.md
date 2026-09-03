@@ -45,12 +45,27 @@ Why a separate env?
 
 4) Point Django at the CLI
   SIGNALP6_BIN=/opt/conda/envs/signalp6/bin/signalp6
+  SIGNALP6_TARBALL=/app/signalp-6.0i.fast.tar.gz
   SIGNALP_CACHE_DIR=/tmp/saffron_signalp
 
-  Until step 3 succeeds, SAFFRON detects the stub and uses the mock predictor.
+  For the Charité docker-compose setup (`olis_amber_django_app`), these are set
+  automatically. On each container start, `scripts/signalp6_register_if_needed.sh`
+  registers the tarball if the conda stub is not yet activated — so rebuilds do
+  not require manual `signalp6-register`.
+
+  Place your DTU download at:
+    signalp-6.0i.fast.tar.gz   (repo root, mounted as /app/…)
+
+  Until registration succeeds, SAFFRON detects the stub and uses the mock predictor.
+
+Long analyses
+  UniProt runs with many SP-region mutants can take several minutes. SAFFRON starts
+  analysis in a background thread and the loading page polls until results are ready,
+  avoiding reverse-proxy (504) timeouts.
 
 Force mock (tests / CI)
   SIGNALP_MOCK=1
 
 Optional: auto-register on container start
-  Mount the tarball and set SIGNALP6_TARBALL to its path (see Dockerfile CMD).
+  Set SIGNALP6_TARBALL to the tarball path (see docker-compose for olis_amber_django_app).
+  Registration runs via scripts/signalp6_register_if_needed.sh on every start.
