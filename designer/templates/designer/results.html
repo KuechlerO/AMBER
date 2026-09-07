@@ -10,6 +10,13 @@
 <div class="card page-card results-card">
     <h2>Results</h2>
     <p>Below are the ranked guide RNA candidates for the selected input parameters.</p>
+    <p class="help-text">
+        AlphaMissense is used for ranking, score filters, and coverage.
+        ESM1b LLR and CADD PHRED are listed for every codon outcome of that guide.
+    </p>
+    {% if form_data.cadd_warning %}
+    <p class="help-text" role="status"><strong>CADD:</strong> {{ form_data.cadd_warning }}</p>
+    {% endif %}
 
     <div class="summary-box summary-box-bubbly">
         <h3 class="results-subtitle">Input parameters</h3>
@@ -237,11 +244,11 @@
                         <tr>
                             <th class="row-indicator-col" scope="col" aria-label="Multi-site guide"></th>
                             {% for col_key, col_label in display_columns_map %}
-                                <th class="result-col col-{{ col_key }}{% if col_key not in form_data.selected_columns %} col-hidden{% endif %} {% if col_key == 'position' or col_key == 'alpha_score' or col_key == 'avg_alpha_score' or col_key == 'editor_used' %}sortable{% endif %}"
+                                <th class="result-col col-{{ col_key }}{% if col_key not in form_data.selected_columns %} col-hidden{% endif %} {% if col_key in sortable_columns %}sortable{% endif %}"
                                     data-key="{{ col_key }}">
                                     {{ col_label }}
                                     {% comment %} showing icon only if column is sortable {% endcomment %}
-                                    {% if col_key == 'position' or col_key == 'alpha_score' or col_key == 'avg_alpha_score' or col_key == 'editor_used' %}
+                                    {% if col_key in sortable_columns %}
                                         {% if col_key == "position" %} ▲{% else %} •{% endif %}
                                     {% endif %}
                                 </th>
@@ -262,7 +269,7 @@
                                     {% elif col_key == "wt_codon" %}<span class="sequence-chip">{{ row.wt_codon }}</span>
                                     {% elif col_key == "wt_aa" %}{{ row.wt_aa }}
                                     {% elif col_key == "mut_aa" %}{{ row.mut_aa }}
-                                    {% elif col_key == "alpha_score" %}<span class="score-cell">{{ row.alpha_score|floatformat:3 }}</span>
+                                    {% elif col_key == "alpha_score" %}<span class="score-cell{% if row.alpha_score_significant %} score-significant{% endif %}">{{ row.alpha_score|floatformat:3 }}</span>
                                     {% elif col_key == "editor_used" %}<span class="editor-badge">{{ row.editor_used }}</span>
                                     {% elif col_key == "sgrna_seq" %}<span class="mono">{{ row.sgrna_seq }}</span>
                                     {% elif col_key == "protospacer" %}<span class="mono">{{ row.protospacer }}</span>
@@ -271,10 +278,26 @@
                                     {% elif col_key == "target_position" %}{{ row.target_position|join:", " }}
                                     {% elif col_key == "outcomes" %}
                                         <div class="mono outcomes-cell">
-                                            {% for o in row.outcomes %}<div class="outcome-item">{{ o }}</div>{% endfor %}
+                                            {% for o in row.outcomes %}<div class="outcome-item{% if o|slice:"-1:" == "*" %} outcome-significant{% endif %}">{{ o }}</div>{% endfor %}
+                                        </div>
+                                    {% elif col_key == "esm1b_outcomes" %}
+                                        <div class="mono outcomes-cell">
+                                            {% for o in row.esm1b_outcomes %}<div class="outcome-item{% if o|slice:"-1:" == "*" %} outcome-significant{% endif %}">{{ o }}</div>{% endfor %}
+                                        </div>
+                                    {% elif col_key == "cadd_outcomes" %}
+                                        <div class="mono outcomes-cell">
+                                            {% for o in row.cadd_outcomes %}<div class="outcome-item{% if o|slice:"-1:" == "*" %} outcome-significant{% endif %}">{{ o }}</div>{% endfor %}
                                         </div>
                                     {% elif col_key == "avg_alpha_score" %}
                                         <span class="score-cell">{{ row.avg_alpha_score|floatformat:3 }}</span>
+                                    {% elif col_key == "esm1b_score" %}
+                                        <span class="score-cell{% if row.esm1b_score_significant %} score-significant{% endif %}">{% if row.esm1b_score is not None %}{{ row.esm1b_score|floatformat:3 }}{% else %}—{% endif %}</span>
+                                    {% elif col_key == "avg_esm1b_score" %}
+                                        <span class="score-cell">{% if row.avg_esm1b_score is not None %}{{ row.avg_esm1b_score|floatformat:3 }}{% else %}—{% endif %}</span>
+                                    {% elif col_key == "cadd_phred" %}
+                                        <span class="score-cell{% if row.cadd_phred_significant %} score-significant{% endif %}">{% if row.cadd_phred is not None %}{{ row.cadd_phred|floatformat:2 }}{% else %}—{% endif %}</span>
+                                    {% elif col_key == "avg_cadd_phred" %}
+                                        <span class="score-cell">{% if row.avg_cadd_phred is not None %}{{ row.avg_cadd_phred|floatformat:2 }}{% else %}—{% endif %}</span>
                                     {% endif %}
                                 </td>
                             {% endfor %}
@@ -283,6 +306,16 @@
                     </tbody>
                 </table>
             </div>
+            <p class="help-text score-threshold-legend" role="note">
+                <strong>*</strong> marks values that pass the author cutoff for that score
+                (display only — not the analysis filter):
+                AlphaMissense ≥ {{ am_likely_pathogenic_threshold }}
+                (Cheng et al., Science 2023 / <code>likely_pathogenic</code>);
+                ESM1b LLR ≤ {{ esm1b_damaging_threshold }}
+                (Brandes et al., Nat Genet 2023);
+                CADD PHRED ≥ {{ cadd_significant_threshold }}
+                (top 1% of SNVs on the PHRED scale).
+            </p>
         </div>
 
         <aside class="results-structure-pane" aria-label="Protein structure">
@@ -375,10 +408,23 @@
             <a href="https://www.nature.com/articles/s41586-023-06835-6" target="_blank" rel="noopener">
                 Schmidt et al., <em>Nature</em> (2024)
             </a>
-            — a large-scale mutagenesis map of ~385 T cell–function genes in primary human T cells.
-            Panels cover TNFα, IFNG, PD1, and CD25 readouts (ABE and CBE); gene membership follows
-            Supplementary Table&nbsp;1 from that study. This is published screen data, not output from
-            your AlphaMissense run. Domains and colored AMBER guides are shown again at the bottom.
+            — a large-scale mutagenesis map of T cell–function genes in primary human T cells.
+            Panels cover TNFα, IFNG, PD1, and CD25 readouts (ABE and CBE).
+            Guide sequences and mapped edit sites come from
+            <strong>Supplementary Table&nbsp;2</strong>; enrichment LFCs come from
+            Supplementary Table&nbsp;3.
+            Gene membership (~389 genes) follows Supplementary Table&nbsp;1
+            (same set as Table&nbsp;2) —
+            <a href="{% url 'screen_library' %}" target="_blank" rel="noopener">view all included genes</a>.
+            This is published screen data, not output from your AlphaMissense run.
+        </p>
+        <p class="help-text">
+            Colored AMBER guide bars mark residues where AMBER found a qualifying guide under
+            <em>your</em> analysis settings (PAM and editing window; default window positions 4–8).
+            Screen LFC can still appear at residues AMBER does not mark: the publication often
+            annotates a broader CBE activity window than AMBER’s default, and one guide’s LFC can
+            be assigned to multiple amino acids via multi-site annotations.
+            Domains and colored AMBER guides are shown again at the bottom of the enrichment figure.
         </p>
         {% if screen_plot_available %}
             {% if screen_plot_lookup_uniprot and screen_plot_lookup_uniprot != form_data.uniprot_id %}
@@ -513,6 +559,7 @@ document.addEventListener("DOMContentLoaded", function() {
             }
 
             const duplicateMode = "{{ form_data.duplicate_mode }}";
+            const numericKeys = new Set({{ numeric_sort_keys_json|default:'["position","alpha_score","avg_alpha_score"]'|safe }});
 
             if (duplicateMode === 'group') {
                 // Step 1: find sgrna_seq column index
@@ -535,12 +582,12 @@ document.addEventListener("DOMContentLoaded", function() {
                     const getVal = (group) => {
                         const vals = group.map(r => {
                             const cell = r.children[index]?.innerText.trim() || '';
-                            if (key === "alpha_score" || key === "avg_alpha_score" || key === "position") {
+                            if (numericKeys.has(key)) {
                                 return parseFloat(cell.replace(/[^\d.-]/g, '')) || 0;
                             }
                             return cell;
                         });
-                        if (key === "alpha_score" || key === "avg_alpha_score") {
+                        if (numericKeys.has(key) && key !== "position") {
                             return Math.max(...vals); // best score in group
                         } else if (key === "position") {
                             return Math.min(...vals); // lowest position in group
@@ -563,7 +610,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     group.sort((a, b) => {
                         const aCell = a.children[index]?.innerText.trim() || '';
                         const bCell = b.children[index]?.innerText.trim() || '';
-                        if (key === "alpha_score" || key === "avg_alpha_score" || key === "position") {
+                        if (numericKeys.has(key)) {
                             const aNum = parseFloat(aCell.replace(/[^\d.-]/g, '')) || 0;
                             const bNum = parseFloat(bCell.replace(/[^\d.-]/g, '')) || 0;
                             return (aNum - bNum) * direction;
@@ -582,7 +629,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 rows.sort((a, b) => {
                     let aCell = a.children[index].innerText.trim();
                     let bCell = b.children[index].innerText.trim();
-                    if (key === "alpha_score" || key === "avg_alpha_score" || key === "position") {
+                    if (numericKeys.has(key)) {
                         let aNum = parseFloat(aCell.replace(/[^\d.-]/g, '')) || 0;
                         let bNum = parseFloat(bCell.replace(/[^\d.-]/g, '')) || 0;
                         return (aNum - bNum) * direction;

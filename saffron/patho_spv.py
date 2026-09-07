@@ -25,7 +25,10 @@ def patho_spv_csv_path() -> Path:
     if raw:
         return Path(raw)
     base = Path(getattr(settings, 'BASE_DIR', Path('.')))
-    return base / 'files-archive-dir' / 'patho_spv_in_hs' / 'patho_SPVs_in_hs.csv'
+    return (
+        base / 'data' / 'base-editing-mutagenesis-map' / 'files-archive-dir'
+        / 'patho_spv_in_hs' / 'patho_SPVs_in_hs.csv'
+    )
 
 
 def _norm_accession(swissprot: str) -> str:

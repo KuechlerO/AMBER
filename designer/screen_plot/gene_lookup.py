@@ -15,7 +15,11 @@ _UNIPROT_RE = re.compile(r'^([OPQ][0-9][A-Z0-9]{3}[0-9])(?:-\d+)?$')
 
 
 def _screen_data_root() -> Path:
-    return Path(getattr(settings, 'SCREEN_DATA_DIR', settings.BASE_DIR / 'files-archive-dir'))
+    return Path(getattr(
+        settings,
+        'SCREEN_DATA_DIR',
+        settings.BASE_DIR / 'data' / 'base-editing-mutagenesis-map' / 'files-archive-dir',
+    ))
 
 
 def _table1_path() -> Path:
@@ -142,6 +146,35 @@ def screen_plot_eligibility(uniprot_id: str) -> dict:
         'reason': None,
         'meta': meta,
     }
+
+
+def list_screen_library_genes() -> list[dict]:
+    """
+    All NGG screen-library genes from Supplementary Table 1.
+
+    Returns list of dicts: gene, uniprot_accession, uniprot_len (sorted by gene).
+    """
+    df = _load_table1()
+    if df.empty or 'gene' not in df.columns:
+        return []
+
+    rows: list[dict] = []
+    for _, row in df.iterrows():
+        gene = str(row['gene']).strip()
+        accession = normalize_uniprot_accession(str(row.get('uniprot_accession', '')).strip())
+        if not gene:
+            continue
+        try:
+            length = int(row.get('uniprot_len', row.get('len', 0)) or 0)
+        except (TypeError, ValueError):
+            length = 0
+        rows.append({
+            'gene': gene,
+            'uniprot_accession': accession,
+            'uniprot_len': length,
+        })
+    rows.sort(key=lambda r: (r['gene'].upper(), r['uniprot_accession']))
+    return rows
 
 
 def clear_gene_lookup_cache():

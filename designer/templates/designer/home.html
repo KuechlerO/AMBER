@@ -11,6 +11,14 @@
     </p>
     <p>
         All amino acid substitutions will be evalutated and ranked using <strong>AlphaMissense</strong>.
+        Results also list <strong>ESM1b</strong> log-likelihood ratios and <strong>CADD</strong> PHRED
+        scores for every codon outcome. <strong>max ESM1b LLR</strong> is the most damaging
+        (most negative) value; <strong>max CADD PHRED</strong> is the highest PHRED.
+        On the results page, <strong>*</strong> marks author cutoffs
+        (AlphaMissense ≥ {{ am_likely_pathogenic_threshold }},
+        ESM1b LLR ≤ {{ esm1b_damaging_threshold }},
+        CADD PHRED ≥ {{ cadd_significant_threshold }}) — display only, separate from the
+        AlphaMissense filter slider below.
     </p>
     <p>
         As editors, <strong>ABE</strong> and <strong>CBE</strong> are both supported.

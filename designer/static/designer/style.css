@@ -785,6 +785,14 @@ input[type="range"]::-moz-range-thumb {
     color: var(--text-primary);
 }
 
+.score-cell.score-significant {
+    font-weight: 800;
+    color: #b45309;
+    background: color-mix(in srgb, #fde68a 55%, transparent);
+    padding: 0.1rem 0.35rem;
+    border-radius: 6px;
+}
+
 /* RESULTS TABLE */
 
 .results-subtitle {
@@ -1015,8 +1023,21 @@ input[type="range"]::-moz-range-thumb {
     color: var(--text-primary);
 }
 
+.outcome-item.outcome-significant {
+    font-weight: 700;
+    color: #b45309;
+    background: color-mix(in srgb, #fde68a 45%, transparent);
+    padding: 2px 0.35rem;
+    border-radius: 4px;
+    border-bottom-color: transparent;
+}
+
 .outcome-item:last-child {
     border-bottom: none;
+}
+
+.score-threshold-legend {
+    margin-top: 0.35rem;
 }
 
 .mode-picker {

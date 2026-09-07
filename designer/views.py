@@ -20,6 +20,7 @@ from .result_store import (
     load_analysis_results,
 )
 from .pipeline import apply_duplicate_mode, normalize_duplicate_mode
+from .score_thresholds import threshold_legend_context
 from .coverage_stats import build_coverage_figure, compute_coverage_stats
 from .protein_map import (
     alphafold_pdb_path,
@@ -49,6 +50,8 @@ from pathlib import Path
 DEFAULT_COLUMNS = [
     'position', 'wt_codon', 'wt_aa', 'mut_aa',
     'outcomes', 'avg_alpha_score', 'alpha_score',
+    'esm1b_outcomes', 'avg_esm1b_score', 'esm1b_score',
+    'cadd_outcomes', 'avg_cadd_phred', 'cadd_phred',
     'sgrna_seq', 'protospacer',
     'pam', 'strand', 'target_position',
 ]
@@ -58,9 +61,16 @@ COLUMN_LABELS = {
     'wt_codon': 'WT Codon',
     'wt_aa': 'WT AA',
     'mut_aa': 'Mutated AA',
-    'outcomes': 'Guide RNA Outcomes',
+    'outcomes': 'AlphaMissense Scores',
     'avg_alpha_score': 'avg. AlphaMissense Score',
-    'alpha_score': 'AlphaMissense Score',
+    'alpha_score': 'max AlphaMissense Score',
+    'esm1b_outcomes': 'ESM1b Scores',
+    'avg_esm1b_score': 'avg. ESM1b LLR',
+    'esm1b_score': 'max ESM1b LLR',
+    'cadd_outcomes': 'CADD Scores',
+    'avg_cadd_phred': 'avg. CADD PHRED',
+    'cadd_phred': 'max CADD PHRED',
+    'cadd_raw': 'CADD Raw',
     'editor_used': 'Editor',
     'sgrna_seq': 'Guide RNA',
     'protospacer': 'Protospacer',
@@ -74,9 +84,15 @@ DISPLAY_COLUMNS_MAP = [
     ('wt_codon', 'WT Codon'),
     ('wt_aa', 'WT AA'),
     ('mut_aa', 'Mutated AA'),
-    ('outcomes', 'Outcomes'),
+    ('outcomes', 'AlphaMissense Scores'),
     ('avg_alpha_score', 'avg. AlphaMissense Score'),
-    ('alpha_score', 'AlphaMissense Score'),
+    ('alpha_score', 'max AlphaMissense Score'),
+    ('esm1b_outcomes', 'ESM1b Scores'),
+    ('avg_esm1b_score', 'avg. ESM1b LLR'),
+    ('esm1b_score', 'max ESM1b LLR'),
+    ('cadd_outcomes', 'CADD Scores'),
+    ('avg_cadd_phred', 'avg. CADD PHRED'),
+    ('cadd_phred', 'max CADD PHRED'),
     ('editor_used', 'Editor'),
     ('sgrna_seq', 'Guide RNA'),
     ('protospacer', 'Protospacer'),
@@ -90,15 +106,33 @@ EXPORT_COLUMN_MAPPING = {
     'wt_codon': ('WT Codon', 'wt_codon'),
     'wt_aa': ('WT AA', 'wt_aa'),
     'mut_aa': ('Mutated AA', 'mut_aa'),
-    'alpha_score': ('AlphaMissense Score', 'alpha_score'),
+    'outcomes': ('AlphaMissense Scores', 'outcomes'),
+    'avg_alpha_score': ('avg. AlphaMissense Score', 'avg_alpha_score'),
+    'alpha_score': ('max AlphaMissense Score', 'alpha_score'),
+    'esm1b_outcomes': ('ESM1b Scores', 'esm1b_outcomes'),
+    'avg_esm1b_score': ('avg. ESM1b LLR', 'avg_esm1b_score'),
+    'esm1b_score': ('max ESM1b LLR', 'esm1b_score'),
+    'cadd_outcomes': ('CADD Scores', 'cadd_outcomes'),
+    'avg_cadd_phred': ('avg. CADD PHRED', 'avg_cadd_phred'),
+    'cadd_phred': ('max CADD PHRED', 'cadd_phred'),
+    'cadd_raw': ('CADD Raw', 'cadd_raw'),
     'editor_used': ('Editor', 'editor_used'),
     'sgrna_seq': ('sgRNA Sequence', 'sgrna_seq'),
     'protospacer': ('Protospacer', 'protospacer'),
     'pam': ('PAM', 'pam'),
     'strand': ('Strand', 'strand'),
     'target_position': ('Target Position', 'target_position'),
-    'outcomes': ('Guide RNA Outcomes', 'outcomes'),
-    'avg_alpha_score': ('avg. AlphaMissense Score', 'avg_alpha_score'),
+}
+
+OUTCOME_LIST_KEYS = {'outcomes', 'esm1b_outcomes', 'cadd_outcomes'}
+
+SORTABLE_COLUMNS = {
+    'position', 'alpha_score', 'avg_alpha_score', 'editor_used',
+    'esm1b_score', 'avg_esm1b_score', 'cadd_phred', 'avg_cadd_phred',
+}
+NUMERIC_SORT_COLUMNS = {
+    'position', 'alpha_score', 'avg_alpha_score',
+    'esm1b_score', 'avg_esm1b_score', 'cadd_phred', 'avg_cadd_phred',
 }
 
 
@@ -199,6 +233,7 @@ def _normalize_analysis_result(analysis_result):
         result = dict(analysis_result)
         result.setdefault('guide_rows', [])
         result.setdefault('no_guide_positions', [])
+        result.setdefault('cadd_warning', None)
         return result
     return {'guide_rows': analysis_result, 'no_guide_positions': []}
 
@@ -306,7 +341,10 @@ def _build_results_context(result_rows, form_data, no_guide_rows=None, full_rows
         'show_editor_in_no_guide': form_data.get('editor') == 'BOTH',
         'display_columns': [COLUMN_LABELS.get(col, col) for col in form_data.get('selected_columns', [])],
         'display_columns_map': DISPLAY_COLUMNS_MAP,
+        'sortable_columns': SORTABLE_COLUMNS,
+        'numeric_sort_keys_json': json.dumps(sorted(NUMERIC_SORT_COLUMNS)),
         'form_data': form_data,
+        **threshold_legend_context(),
         **_screen_plot_context(form_data),
         **_coverage_context(
             result_rows,
@@ -401,7 +439,7 @@ def _rows_for_export(request):
 
 
 def home(request):
-    return render(request, 'designer/home.html')
+    return render(request, 'designer/home.html', threshold_legend_context())
 
 def loading(request):
     return render(request, 'designer/loading.html')
@@ -459,6 +497,7 @@ def results(request):
             window_max=window_max,
             duplicate_mode=duplicate_mode,
             pam_type=pam_type,
+            cadd_warning=analysis_result.get('cadd_warning'),
         )
         result_rows = _rows_for_display(full_rows, form_data, post=request.POST)
         no_guide_display = _no_guide_for_display(no_guide_full, form_data, post=request.POST)
@@ -532,27 +571,14 @@ def download_excel(request):
     row_idx += 3
 
     #tabel 2: results
-    column_mapping = {
-        'position': ('Position', 'position'),
-        'wt_codon': ('WT Codon', 'wt_codon'),
-        'wt_aa': ('WT AA', 'wt_aa'),
-        'mut_aa': ('Mutated AA', 'mut_aa'),
-        'alpha_score': ('AlphaMissense Score', 'alpha_score'),
-        'editor_used': ('Editor', 'editor_used'),
-        'sgrna_seq': ('sgRNA Sequence', 'sgrna_seq'),
-        'protospacer': ('Protospacer', 'protospacer'),
-        'pam': ('PAM', 'pam'),
-        'strand': ('Strand', 'strand'),
-        'target_position': ('Target Position', 'target_position'),
-        'outcomes': ('Guide RNA Outcomes', 'outcomes'),
-        'avg_alpha_score': ('avg. AlphaMissense Score','avg_alpha_score'),
-    }
+    column_mapping = EXPORT_COLUMN_MAPPING
 
     selected_columns = form_data.get('selected_columns', [])
 
     # if nothing selected -> show all
     if not selected_columns:
         selected_columns = list(column_mapping.keys())
+    selected_columns = [col for col in selected_columns if col in column_mapping]
 
     # Header
     for col_idx, col_key in enumerate(selected_columns, start=1):
@@ -594,12 +620,12 @@ def download_excel(request):
             if data_key == 'target_position' and isinstance(value, list):
                 value = ', '.join(str(x) for x in value)
 
-            if data_key == 'outcomes' and isinstance(value, list):
+            if data_key in OUTCOME_LIST_KEYS and isinstance(value, list):
                 value = '\n'.join(value)
 
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
 
-            if data_key == 'outcomes':
+            if data_key in OUTCOME_LIST_KEYS:
                 cell.alignment = Alignment(wrap_text=True)
 
             if row_color:
@@ -634,25 +660,12 @@ def download_csv(request):
     alpha_threshold = form_data.get('alpha_threshold')
 
 
-    column_mapping = {
-        'position': ('Position', 'position'),
-        'wt_codon': ('WT Codon', 'wt_codon'),
-        'wt_aa': ('WT AA', 'wt_aa'),
-        'mut_aa': ('Mutated AA', 'mut_aa'),
-        'alpha_score': ('AlphaMissense Score', 'alpha_score'),
-        'editor_used': ('Editor', 'editor_used'),
-        'sgrna_seq': ('sgRNA Sequence', 'sgrna_seq'),
-        'protospacer': ('Protospacer', 'protospacer'),
-        'pam': ('PAM', 'pam'),
-        'strand': ('Strand', 'strand'),
-        'target_position': ('Target Position', 'target_position'),
-        'outcomes': ('Guide RNA Outcomes', 'outcomes'),
-        'avg_alpha_score': ('avg. AlphaMissense Score','avg_alpha_score'),
-    }
+    column_mapping = EXPORT_COLUMN_MAPPING
 
     selected_columns = form_data.get('selected_columns', [])
     if not selected_columns:
         selected_columns = list(column_mapping.keys())
+    selected_columns = [col for col in selected_columns if col in column_mapping]
 
 
     gene_name = form_data.get('gene_name') or form_data.get('uniprot_id', 'Unknown target')
@@ -682,7 +695,7 @@ def download_csv(request):
                 else:
                     value = f'pos {value}'
 
-            if data_key == 'outcomes' and isinstance(value, list):
+            if data_key in OUTCOME_LIST_KEYS and isinstance(value, list):
                 value = ' | '.join(value)
 
             csv_row.append(value)
@@ -837,7 +850,11 @@ def structure_pdb(request, accession: str):
     if local is not None:
         root = local.resolve().parent
         expected_root = (
-            Path(getattr(settings, 'SCREEN_DATA_DIR', settings.BASE_DIR / 'files-archive-dir'))
+            Path(getattr(
+                settings,
+                'SCREEN_DATA_DIR',
+                settings.BASE_DIR / 'data' / 'base-editing-mutagenesis-map' / 'files-archive-dir',
+            ))
             / 'libraries'
             / 'AF_screen_proteins'
         ).resolve()
@@ -994,3 +1011,22 @@ def tutorial(request):
 
 def about(request):
     return render(request, 'designer/about.html')
+
+
+def screen_library(request):
+    """List all genes in the NGG base-editing screen library (Supplementary Table 1)."""
+    from designer.screen_plot.gene_lookup import (
+        is_screen_library_data_readable,
+        list_screen_library_genes,
+    )
+
+    genes = list_screen_library_genes() if is_screen_library_data_readable() else []
+    return render(
+        request,
+        'designer/screen_library.html',
+        {
+            'genes': genes,
+            'n_genes': len(genes),
+            'data_available': bool(genes),
+        },
+    )

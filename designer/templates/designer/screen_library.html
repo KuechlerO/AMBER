@@ -1,0 +1,50 @@
+{% extends "designer/base.html" %}
+{% block content %}
+
+<div class="card page-card">
+    <h2>NGG screen library genes</h2>
+    <p>
+        Genes included in the NGG base-editing mutagenesis screen from
+        <a href="https://www.nature.com/articles/s41586-023-06835-6" target="_blank" rel="noopener">
+            Schmidt et al., <em>Nature</em> (2024)
+        </a>.
+        Membership follows Supplementary Table&nbsp;1 (same gene set as the guide library in
+        Supplementary Table&nbsp;2). Guide sequences and mapped edit sites are taken from
+        Supplementary Table&nbsp;2; enrichment log-fold changes come from Supplementary Table&nbsp;3.
+    </p>
+    {% if data_available %}
+        <p class="help-text">{{ n_genes }} genes (sorted by symbol).</p>
+        <div class="table-shell" style="margin-top: 1rem;">
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Gene</th>
+                        <th>UniProt</th>
+                        <th>Length (aa)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for g in genes %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td><strong>{{ g.gene }}</strong></td>
+                        <td>
+                            <a href="https://www.uniprot.org/uniprotkb/{{ g.uniprot_accession }}/entry"
+                               target="_blank" rel="noopener">{{ g.uniprot_accession }}</a>
+                        </td>
+                        <td>{% if g.uniprot_len %}{{ g.uniprot_len }}{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="help-text">Screen library data is not available on this server.</p>
+    {% endif %}
+    <p style="margin-top: 1.25rem;">
+        <a href="{% url 'home' %}" class="btn">Back to AMBER</a>
+    </p>
+</div>
+
+{% endblock %}

@@ -93,12 +93,12 @@ DATABASES = {
     },
     'legacy_db':{
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME':'swpdb',
-        'USER':'swp2026',
-        'PASSWORD':'swp2026',
-        # 'HOST':'127.0.0.1',
-        'HOST':'medgen_pgsql_db',
-        'PORT':'5432',
+        'NAME': os.getenv('AMBER_DB_NAME', 'swpdb'),
+        'USER': os.getenv('AMBER_DB_USER', 'swp2026'),
+        'PASSWORD': os.getenv('AMBER_DB_PASSWORD', 'swp2026'),
+        # Docker compose hostname; on the bare host / SSH tunnel use AMBER_DB_HOST=127.0.0.1
+        'HOST': os.getenv('AMBER_DB_HOST', 'medgen_pgsql_db'),
+        'PORT': os.getenv('AMBER_DB_PORT', '5432'),
         'OPTIONS':{
             'options': '-c search_path=alpha_missense_db' # Set search path to target schema
         }
@@ -152,11 +152,26 @@ SIGNALP6_MODEL_DIR = os.getenv('SIGNALP6_MODEL_DIR', None)
 SIGNALP_CACHE_DIR = os.getenv('SIGNALP_CACHE_DIR', None)
 SIGNALP_TIMEOUT_SEC = int(os.getenv('SIGNALP_TIMEOUT_SEC', '600'))
 ENSEMBL_TIMEOUT_SEC = int(os.getenv('ENSEMBL_TIMEOUT_SEC', '60'))
+# Local data directory (cache, screen supplementary tables, ESM1B)
+DATA_DIR = BASE_DIR / 'data'
+SCREEN_DATA_DIR = Path(os.getenv(
+    'SCREEN_DATA_DIR',
+    str(DATA_DIR / 'base-editing-mutagenesis-map' / 'files-archive-dir'),
+))
 # Gutierrez Guarnizo et al. SP pathogenic-variant catalogue (optional)
 PATHO_SPV_CSV = os.getenv(
     'PATHO_SPV_CSV',
-    str(BASE_DIR / 'files-archive-dir' / 'patho_spv_in_hs' / 'patho_SPVs_in_hs.csv'),
+    str(SCREEN_DATA_DIR / 'patho_spv_in_hs' / 'patho_SPVs_in_hs.csv'),
 )
+ESM1B_DATA_DIR = Path(os.getenv(
+    'ESM1B_DATA_DIR',
+    str(DATA_DIR / 'ESM1B' / 'content' / 'ALL_hum_isoforms_ESM1b_LLR'),
+))
+CADD_API_BASE = os.getenv('CADD_API_BASE', 'https://cadd.gs.washington.edu/api/v1.0')
+CADD_MODEL = os.getenv('CADD_MODEL', 'GRCh38-v1.7')
+CADD_TIMEOUT_SEC = int(os.getenv('CADD_TIMEOUT_SEC', '20'))
+CADD_MAX_WORKERS = int(os.getenv('CADD_MAX_WORKERS', '4'))
+CADD_CACHE_DIR = os.getenv('CADD_CACHE_DIR', None)
 
 # ---- Enable subpath deployment ----
 FORCE_SCRIPT_NAME = os.getenv('FORCE_SCRIPT_NAME', None)
@@ -176,9 +191,7 @@ USE_X_FORWARDED_HOST = True
 
 
 
-# Local data directory (cache, etc.)
-DATA_DIR = BASE_DIR / 'data'
-SCREEN_DATA_DIR = BASE_DIR / 'files-archive-dir'
+# CADD PHRED cache (immutable per model + SNV)
 
 
 def _resolve_cache_dir() -> Path:

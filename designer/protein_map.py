@@ -31,7 +31,11 @@ _domain_cache: dict[str, list[dict[str, Any]]] = {}
 
 
 def _screen_data_root() -> Path:
-    return Path(getattr(settings, 'SCREEN_DATA_DIR', settings.BASE_DIR / 'files-archive-dir'))
+    return Path(getattr(
+        settings,
+        'SCREEN_DATA_DIR',
+        settings.BASE_DIR / 'data' / 'base-editing-mutagenesis-map' / 'files-archive-dir',
+    ))
 
 
 def domains_from_uniprot_features(uniprot_data: dict) -> list[dict[str, Any]]:

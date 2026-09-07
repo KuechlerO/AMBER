@@ -9,6 +9,7 @@ urlpatterns = [
     path('loading/', views.loading, name='loading'),
     path('tutorial/', views.tutorial, name='tutorial'),
     path('about/', views.about, name='about'),
+    path('screen-library/', views.screen_library, name='screen_library'),
     path('results/screen-plot/status/', views.screen_plot_status, name='screen_plot_status'),
     path('results/screen-plot/warmup/', views.screen_plot_warmup, name='screen_plot_warmup'),
     path('results/screen-plot/overview/', views.screen_plot_overview, name='screen_plot_overview'),

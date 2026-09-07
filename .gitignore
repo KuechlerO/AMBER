@@ -210,3 +210,6 @@ marimo/_lsp/
 __marimo__/
 
 .staticfiles/
+
+# DTU SignalP licensed download (~1.5 GB); keep locally, mount via docker-compose
+signalp-6.0*.fast.tar.gz

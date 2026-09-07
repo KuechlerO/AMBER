@@ -16,7 +16,11 @@ from .helpers import combine_pvals, ext_loc_splice, is_KO, is_syn
 
 
 def _screen_data_root() -> Path:
-    return Path(getattr(settings, 'SCREEN_DATA_DIR', settings.BASE_DIR / 'files-archive-dir'))
+    return Path(getattr(
+        settings,
+        'SCREEN_DATA_DIR',
+        settings.BASE_DIR / 'data' / 'base-editing-mutagenesis-map' / 'files-archive-dir',
+    ))
 
 
 class ScreenDataStore:

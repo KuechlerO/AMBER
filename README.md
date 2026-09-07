@@ -18,7 +18,7 @@ The application allows users to:
 - Choose how to handle **duplicate guide RNAs** (show once or group all occurrences)
 - Decide which columns should be shown in the results table
 
-The tool returns ranked guide RNA candidates with protospacer, PAM, strand, target position, guide RNA outcomes annotated with AlphaMissense scores and their average Alpha Missense scores.
+The tool returns ranked guide RNA candidates with protospacer, PAM, strand, target position, and per-outcome **AlphaMissense**, **ESM1b LLR**, and **CADD PHRED** lists plus max/avg scalars. A trailing `*` marks values that pass author cutoffs (AlphaMissense ≥ 0.564, ESM1b LLR ≤ −7.5, CADD PHRED ≥ 20); those marks are display-only and distinct from the AlphaMissense analysis filter.
 
 On the results page you also get:
 
@@ -31,7 +31,7 @@ Results can be **downloaded as CSV or Excel**. If the results table is sorted by
 
 Guide RNAs that span **exon-intron boundaries** are automatically excluded.
 
-AlphaMissense scores are retrieved from a **PostGreSQL database**.
+AlphaMissense scores are retrieved from a **PostgreSQL database**. ESM1b and CADD are extra sortable columns; AlphaMissense still drives ranking, the score filter, and coverage bins.
 
 ---
 
@@ -45,6 +45,9 @@ AlphaMissense scores are retrieved from a **PostGreSQL database**.
 * `designer/views.py` – request handling and result rendering
 * `designer/services.py` – input validation and pipeline entry point
 * `designer/pipeline.py` – core analysis pipeline (guide RNA search, exon filtering, outcome annotation)
+* `designer/esm1b.py` – ESM1b LLR matrix loader
+* `designer/cadd.py` – CADD GRCh38 REST client and cache
+* `designer/score_thresholds.py` – author pathogenicity cutoffs (display marking)
 * `designer/models.py` – AlphaMissense database model
 * `saffron/` – **SAFFRON** sibling app (SignalP-based N-terminal / signal-peptide guide design)
 
@@ -65,7 +68,8 @@ It:
 - Annotates guide outcomes with **CLIN_SIG** and paper **potentially pathogenic** labels from
   [Gutierrez Guarnizo et al. 2023](https://pmc.ncbi.nlm.nih.gov/articles/PMC10583284/)
   (Supplementary File S3, sheet `SupplementaryFileS3_PPVclass`; loaded as
-  `files-archive-dir/patho_spv_in_hs/patho_SPVs_in_hs.csv`; override with `PATHO_SPV_CSV`)
+  `data/base-editing-mutagenesis-map/files-archive-dir/patho_spv_in_hs/patho_SPVs_in_hs.csv`;
+  override with `PATHO_SPV_CSV`)
 
 AMBER and SAFFRON link to each other in the header navigation.
 
@@ -123,12 +127,61 @@ http://127.0.0.1:8000/
 4. For each position guide RNAs are searched on both strands
 5. Guide RNAs spanning exon-intron boundaries are excluded (via Ensembl mapping)
 6. Possible codon outcomes are enumerated and annotated with AlphaMissense scores
-7. Results are sorted by position (ascending) by default and can be re-sorted in the browser
+7. The same missense is annotated with **ESM1b LLR** (local isoform CSV) and **CADD PHRED** (BIH REST API, after mapping the coding edit to a genomic SNV)
+8. Results are sorted by position (ascending) by default and can be re-sorted in the browser (including ESM1b / CADD columns)
+
+---
+
+## Local data files
+
+The `data/` directory is **gitignored**. Download these resources locally (or point the settings at existing copies).
+
+### Base-editing mutagenesis map (NGG / NG screens)
+
+Published supplementary tables live at:
+
+```
+data/base-editing-mutagenesis-map/files-archive-dir/
+```
+
+`SCREEN_DATA_DIR` and the default `PATHO_SPV_CSV` path point here (override with env vars if needed).
+
+### ESM1b LLR scores
+
+Genome-wide missense effect scores from Brandes et al., *Nature Genetics* (2023)
+([doi:10.1038/s41588-023-01465-0](https://doi.org/10.1038/s41588-023-01465-0)).
+
+Download the precomputed human-isoform predictions:
+
+```
+https://huggingface.co/spaces/ntranoslab/esm_variants/resolve/main/ALL_hum_isoforms_ESM1b_LLR.zip
+```
+
+Extract into `data/ESM1B/` so the layout is:
+
+```
+data/ESM1B/
+  ALL_hum_isoforms_ESM1b_LLR.zip
+  contents_u_df.csv
+  content/ALL_hum_isoforms_ESM1b_LLR/{UniProt-accession}_LLR.csv
+```
+
+Each CSV is a 20 × protein-length matrix: columns `{WT} {position}` (1-based), rows = mutant amino acid, values = log-likelihood ratio (0 = wild type; more negative = more damaging). The paper uses **LLR = −7.5** as a pathogenic/benign cutoff; AMBER marks that cutoff with `*` in the results UI but does **not** use it for filtering (AlphaMissense remains the filter). Override the directory with `ESM1B_DATA_DIR`.
+
+### CADD scores
+
+CADD is nucleotide-level. AMBER maps each coding-strand edit to GRCh38 `chrom:pos:ref:alt` via the Ensembl CDS map, then queries **CADD GRCh38-v1.7** at the Charité/BIH mirror:
+
+```
+https://cadd.gs.washington.edu/api/v1.0/GRCh38-v1.7/{chrom}:{pos}
+```
+
+Responses are cached under `data/cache/cadd/` (or `CADD_CACHE_DIR`). Default API is the Washington mirror (`CADD_API_BASE=https://cadd.gs.washington.edu/api/v1.0`); override to the BIH host if available. If the API is unreachable, guide design still succeeds and CADD columns stay empty. Results mark **PHRED ≥ 20** (top 1% of SNVs) with `*` for display; CADD authors advise against a single universal clinical cutoff.
 
 ---
 
 ## Notes
 
-- The AlphaMissense data is served from a **PostGreSQL database** (`legacy_db` in Django settings) – not from local files
+- The AlphaMissense data is served from a **PostgreSQL database** (`legacy_db` in Django settings) – not from local files
 - The Django project configuration is in `crispr_webapp/`
 - The main analysis logic is in `designer/pipeline.py`
