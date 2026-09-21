@@ -11,4 +11,5 @@ urlpatterns = [
     path('download/excel/', views.download_excel, name='saffron_download_excel'),
     path('plot/<path:job_file>', views.plot_file, name='saffron_plot'),
     path('about/', views.about, name='saffron_about'),
+    path('api/gene-uniprot/', views.gene_uniprot_search, name='saffron_gene_uniprot_search'),
 ]

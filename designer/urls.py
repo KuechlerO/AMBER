@@ -17,4 +17,5 @@ urlpatterns = [
     path('results/screen-plot/full-status/', views.screen_plot_full_status, name='screen_plot_full_status'),
     path('results/screen-plot/', views.screen_enrichment_plot, name='screen_enrichment_plot'),
     path('results/structure/<str:accession>.pdb', views.structure_pdb, name='structure_pdb'),
+    path('api/gene-uniprot/', views.gene_uniprot_search, name='gene_uniprot_search'),
 ]

@@ -100,11 +100,93 @@ def fetch_uniprot_json(uniprot_id):
     return r.json()
 
 
+def extract_gene_symbol(data) -> str | None:
+    for gene in data.get('genes') or []:
+        name = (gene.get('geneName') or {}).get('value')
+        if name:
+            return str(name)
+    return None
+
+
+def _ensembl_transcript_ids_from_uniprot(data) -> list[str]:
+    """Collect ENST IDs listed as UniProt → Ensembl cross-references."""
+    out: list[str] = []
+    for ref in data.get('uniProtKBCrossReferences') or []:
+        if ref.get('database') != 'Ensembl':
+            continue
+        tid = str(ref.get('id') or '').split('.')[0]
+        if tid.startswith('ENST') and tid not in out:
+            out.append(tid)
+    return out
+
+
+def _ensembl_gene_ids_from_uniprot(data) -> list[str]:
+    """Collect ENSG IDs from Ensembl xrefs and other UniProt cross-refs."""
+    out: list[str] = []
+
+    def _add(raw: str) -> None:
+        gid = str(raw or '').split('.')[0]
+        if gid.startswith('ENSG') and gid not in out:
+            out.append(gid)
+
+    for ref in data.get('uniProtKBCrossReferences') or []:
+        _add(ref.get('id') or '')
+        if ref.get('database') == 'Ensembl':
+            for prop in ref.get('properties') or []:
+                if prop.get('key') == 'GeneId':
+                    _add(prop.get('value') or '')
+    return out
+
+
+def lookup_ensembl_canonical_transcript(
+    *,
+    gene_symbol: str | None = None,
+    gene_id: str | None = None,
+    species: str = 'homo_sapiens',
+) -> str | None:
+    """Resolve a canonical ENST via Ensembl gene symbol or ENSG id."""
+    if gene_id:
+        url = f'https://rest.ensembl.org/lookup/id/{gene_id}'
+    elif gene_symbol:
+        url = f'https://rest.ensembl.org/lookup/symbol/{species}/{gene_symbol}'
+    else:
+        return None
+
+    r = _http_get(url, headers={'Content-Type': 'application/json'}, timeout=60)
+    if r.status_code != 200:
+        return None
+    payload = r.json() or {}
+    canonical = str(payload.get('canonical_transcript') or '')
+    tid = canonical.split('.')[0]
+    return tid if tid.startswith('ENST') else None
+
+
 def extract_ensembl_transcript(data):
-    for ref in data.get('uniProtKBCrossReferences', []):
-        if ref['database'] == 'Ensembl':
-            return ref['id'].split('.')[0]
-    raise ValueError('Ensembl Transcipt not found!')
+    """
+    Return an Ensembl transcript ID for a UniProt entry.
+
+    Prefer UniProt Ensembl xrefs. If none exist (common for TCR constant-region
+    entries such as P01850 / A0A5B9), fall back to gene-symbol or ENSG lookup.
+    """
+    direct = _ensembl_transcript_ids_from_uniprot(data)
+    if direct:
+        return direct[0]
+
+    symbol = extract_gene_symbol(data)
+    if symbol:
+        tid = lookup_ensembl_canonical_transcript(gene_symbol=symbol)
+        if tid:
+            return tid
+
+    for gene_id in _ensembl_gene_ids_from_uniprot(data):
+        tid = lookup_ensembl_canonical_transcript(gene_id=gene_id)
+        if tid:
+            return tid
+
+    raise ValueError(
+        'No Ensembl transcript found for this UniProt entry '
+        '(no Ensembl cross-reference and gene lookup failed).'
+    )
 
 
 def fetch_cds(transcript_id):
@@ -124,14 +206,6 @@ def get_cds_from_uniprot(uniprot_id):
     data = fetch_uniprot_json(uniprot_id)
     transcript_id = extract_ensembl_transcript(data)
     return fetch_cds(transcript_id)
-
-def extract_gene_symbol(data) -> str | None:
-    for gene in data.get('genes') or []:
-        name = (gene.get('geneName') or {}).get('value')
-        if name:
-            return str(name)
-    return None
-
 
 def get_cds_and_transcript_from_uniprot(uniprot_id):
     data = fetch_uniprot_json(uniprot_id)
@@ -987,11 +1061,11 @@ def run_pipeline(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, wi
         and pd.notna(r.get('alpha_score'))
     ]
 
-    cadd_snvs = []
+    genomic_snvs = []
     for row in all_rows:
         for detail in row.get('_outcome_details') or []:
-            cadd_snvs.extend(detail.get('snvs') or [])
-    cadd_map, cadd_warning = fetch_cadd_scores(cadd_snvs)
+            genomic_snvs.extend(detail.get('snvs') or [])
+    cadd_map, cadd_warning = fetch_cadd_scores(genomic_snvs)
     finalize_guide_scores(all_rows, cadd_map)
 
     all_rows.sort(

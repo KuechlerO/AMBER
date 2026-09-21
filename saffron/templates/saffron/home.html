@@ -1,4 +1,5 @@
 {% extends "saffron/base.html" %}
+{% load static %}
 
 {% block content %}
 <div class="card page-card intro-card">
@@ -9,8 +10,9 @@
         and ranks edits by change in SignalP scores (Δ).
     </p>
     <p>
-        Provide a <strong>UniProt / Ensembl ID</strong> for full guide design, or paste an
-        <strong>amino-acid sequence</strong> for SignalP-only scoring (no guides without a CDS).
+        Provide a <strong>UniProt / Ensembl ID</strong> or a <strong>gene symbol</strong> (then pick a UniProt
+        accession) for full guide design, or paste an <strong>amino-acid sequence</strong> for
+        SignalP-only scoring (no guides without a CDS).
     </p>
 </div>
 
@@ -42,7 +44,7 @@
             <div class="filter-inline input-mode-row">
                 <label class="filter-radio">
                     <input type="radio" name="input_mode" value="uniprot" checked id="mode-uniprot">
-                    UniProt / Ensembl ID
+                    UniProt / Ensembl / gene
                 </label>
                 <label class="filter-radio">
                     <input type="radio" name="input_mode" value="sequence" id="mode-sequence">
@@ -53,12 +55,16 @@
 
         <div class="form-grid" id="uniprot-fields">
             <div class="form-group">
-                <label for="uniprot_id">UniProt ID or Ensembl ID</label>
+                <label for="uniprot_id">UniProt, Ensembl, or gene symbol</label>
                 <div class="input-with-action">
-                    <input type="text" id="uniprot_id" name="uniprot_id" placeholder="e.g. P09668" value="P09668">
-                    <button type="button" class="btn btn-example" id="example-btn" title="Example (CTSH / P09668)">Example</button>
+                    <input type="text" id="uniprot_id" name="uniprot_id" placeholder="e.g. P09668 or CTSH" value="P09668">
+                    <button type="button" class="btn-form-aux" id="gene-lookup-btn" title="Look up UniProt accessions for a gene symbol">Look up gene</button>
+                    <button type="button" class="btn-form-aux" id="example-btn" title="Example (CTSH / P09668)">Example</button>
                 </div>
-                <small class="help-text">Whitespace is ignored. Example: amyloid precursor protein (has a classical SP).</small>
+                <small class="help-text">
+                    Whitespace is ignored. Gene symbols (e.g. <code>CTSH</code>) open a UniProt picker when multiple entries exist.
+                </small>
+                <p class="gene-picker-selected" id="gene-picker-selected" hidden></p>
             </div>
 
             <div class="form-group">
@@ -122,6 +128,25 @@
     </form>
 </div>
 
+<dialog
+    id="gene-picker-modal"
+    class="gene-picker-modal"
+    data-search-url="{% url 'saffron_gene_uniprot_search' %}"
+>
+    <div class="gene-picker-modal-inner">
+        <div class="gene-picker-modal-header">
+            <h3 class="gene-picker-modal-title">Look up gene</h3>
+            <button type="button" class="gene-picker-modal-close" data-gene-picker-close aria-label="Close">&times;</button>
+        </div>
+        <p class="gene-picker-status"></p>
+        <div class="gene-picker-list" role="radiogroup" aria-label="UniProt accessions for gene"></div>
+        <div class="gene-picker-modal-footer">
+            <button type="button" class="btn-form-aux" data-gene-picker-close>Cancel</button>
+        </div>
+    </div>
+</dialog>
+
+<script src="{% static 'designer/gene_picker.js' %}"></script>
 <script>
 (function () {
     var modeUniprot = document.getElementById('mode-uniprot');
@@ -130,6 +155,7 @@
     var seqFields = document.getElementById('sequence-fields');
     var uniprotInput = document.getElementById('uniprot_id');
     var seqInput = document.getElementById('aa_sequence');
+    var geneNote = document.getElementById('gene-picker-selected');
 
     function syncMode() {
         var isSeq = modeSeq.checked;
@@ -141,6 +167,7 @@
         if (isSeq) {
             uniprotInput.removeAttribute('required');
             seqInput.setAttribute('required', 'required');
+            if (geneNote) geneNote.hidden = true;
         } else {
             seqInput.removeAttribute('required');
             uniprotInput.setAttribute('required', 'required');
@@ -155,7 +182,12 @@
         syncMode();
         uniprotInput.value = 'P09668';
         document.getElementById('mutation').value = '';
+        if (geneNote) geneNote.hidden = true;
     });
+
+    if (typeof initGenePicker === 'function') {
+        initGenePicker();
+    }
 })();
 </script>
 {% endblock %}

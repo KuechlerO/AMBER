@@ -1,4 +1,5 @@
 {% extends "designer/base.html" %}
+{% load static %}
 
 {% block content %}
 
@@ -41,22 +42,27 @@
 
         <div class="form-grid">
             <div class="form-group">
-                <label for="uniprot_id">UniProt ID or Ensembl ID</label>
+                <label for="uniprot_id">UniProt, Ensembl, or gene symbol</label>
                 <div class="input-with-action">
                     <input
                         type="text"
                         id="uniprot_id"
                         name="uniprot_id"
-                        placeholder="e.g. P04439"
+                        placeholder="e.g. P04439 or HLA-A"
                         required
                     >
-                    <button type="button" class="btn btn-example" id="example-btn" title="Fill with example UniProt ID (HLA-A)">
+                    <button type="button" class="btn-form-aux" id="gene-lookup-btn" title="Look up UniProt accessions for a gene symbol">
+                        Look up gene
+                    </button>
+                    <button type="button" class="btn-form-aux" id="example-btn" title="Fill with example UniProt ID (HLA-A)">
                         Example
                     </button>
                 </div>
                 <small class="help-text">
-                    Enter a UniProt protein ID or Ensembl ID for the target protein
+                    Enter a UniProt accession, Ensembl transcript (<code>ENST…</code>), or a gene symbol
+                    (e.g. <code>TRBC1</code>). Gene symbols open a UniProt picker when multiple entries exist.
                 </small>
+                <p class="gene-picker-selected" id="gene-picker-selected" hidden></p>
             </div>
 
             <div class="form-group">
@@ -227,6 +233,25 @@
     </form>
 </div>
 
+<dialog
+    id="gene-picker-modal"
+    class="gene-picker-modal"
+    data-search-url="{% url 'gene_uniprot_search' %}"
+>
+    <div class="gene-picker-modal-inner">
+        <div class="gene-picker-modal-header">
+            <h3 class="gene-picker-modal-title">Look up gene</h3>
+            <button type="button" class="gene-picker-modal-close" data-gene-picker-close aria-label="Close">&times;</button>
+        </div>
+        <p class="gene-picker-status"></p>
+        <div class="gene-picker-list" role="radiogroup" aria-label="UniProt accessions for gene"></div>
+        <div class="gene-picker-modal-footer">
+            <button type="button" class="btn-form-aux" data-gene-picker-close>Cancel</button>
+        </div>
+    </div>
+</dialog>
+
+<script src="{% static 'designer/gene_picker.js' %}"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
     const exampleBtn = document.getElementById("example-btn");
@@ -235,7 +260,13 @@ document.addEventListener("DOMContentLoaded", function () {
         exampleBtn.addEventListener("click", function () {
             uniprotInput.value = "P04439";
             uniprotInput.focus();
+            var note = document.getElementById("gene-picker-selected");
+            if (note) note.hidden = true;
         });
+    }
+
+    if (typeof initGenePicker === "function") {
+        initGenePicker();
     }
 
     const minInput = document.querySelector('input[name="window_min"]');

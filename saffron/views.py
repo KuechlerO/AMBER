@@ -8,8 +8,11 @@ from pathlib import Path
 
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 from openpyxl import Workbook
+
+from designer.uniprot_gene_search import GeneSearchError, search_uniprot_by_gene_symbol
 
 from . import result_store
 from .analysis_jobs import get_status, start_analysis
@@ -33,6 +36,23 @@ def loading(request):
 def analysis_status(request):
     """JSON polling endpoint while background analysis runs."""
     return JsonResponse(get_status(session_key_from_request(request)))
+
+
+@require_GET
+@never_cache
+def gene_uniprot_search(request):
+    """JSON alias of AMBER gene→UniProt search for the SAFFRON home picker."""
+    query = (request.GET.get('q') or '').strip()
+    try:
+        results = search_uniprot_by_gene_symbol(query)
+    except GeneSearchError as exc:
+        return JsonResponse({'error': str(exc), 'results': []}, status=400)
+    except Exception:
+        return JsonResponse(
+            {'error': 'Gene lookup failed. Please try again.', 'results': []},
+            status=502,
+        )
+    return JsonResponse({'query': query, 'results': results})
 
 
 def _form_from_post(post) -> dict:

@@ -47,6 +47,7 @@ AlphaMissense scores are retrieved from a **PostgreSQL database**. ESM1b and CAD
 * `designer/pipeline.py` – core analysis pipeline (guide RNA search, exon filtering, outcome annotation)
 * `designer/esm1b.py` – ESM1b LLR matrix loader
 * `designer/cadd.py` – CADD GRCh38 REST client and cache
+* `designer/clinvar.py` – ClinVar E-utilities client (protein-map overview track)
 * `designer/score_thresholds.py` – author pathogenicity cutoffs (display marking)
 * `designer/models.py` – AlphaMissense database model
 * `saffron/` – **SAFFRON** sibling app (SignalP-based N-terminal / signal-peptide guide design)
@@ -177,6 +178,10 @@ https://cadd.gs.washington.edu/api/v1.0/GRCh38-v1.7/{chrom}:{pos}
 ```
 
 Responses are cached under `data/cache/cadd/` (or `CADD_CACHE_DIR`). Default API is the Washington mirror (`CADD_API_BASE=https://cadd.gs.washington.edu/api/v1.0`); override to the BIH host if available. If the API is unreachable, guide design still succeeds and CADD columns stay empty. Results mark **PHRED ≥ 20** (top 1% of SNVs) with `*` for display; CADD authors advise against a single universal clinical cutoff.
+
+### ClinVar overview track
+
+The results **Protein map** includes a ClinVar track (between UniProt domains and AMBER guides) colored by germline classification. Variants are fetched live from NCBI E-utilities (`{gene}[gene]`), mapped to protein residue via ClinVar `protein_change`, and cached under `data/cache/clinvar/` (or `CLINVAR_CACHE_DIR`, TTL `CLINVAR_CACHE_TTL_SEC`). Set `CLINVAR_EUTILS_EMAIL` (and optionally `NCBI_API_KEY`) per NCBI usage guidelines. If ClinVar is unreachable, the protein map still loads with an empty ClinVar lane.
 
 ---
 

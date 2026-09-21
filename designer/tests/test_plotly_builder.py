@@ -53,12 +53,69 @@ class PlotlyBuilderSmokeTest(TestCase):
         payload = json.loads(fig.to_json())
         titles = [a.get('text', '') for a in payload['layout'].get('annotations', [])]
         self.assertIn('UniProt domains', titles)
+        self.assertTrue(any('ClinVar variants' in (t or '') for t in titles))
         self.assertFalse(any('AMBER guides' in (t or '') for t in titles))
-        xaxis2 = payload['layout'].get('xaxis2') or {}
-        x_title = xaxis2.get('title')
+        xaxis3 = payload['layout'].get('xaxis3') or {}
+        x_title = xaxis3.get('title')
         if isinstance(x_title, dict):
             x_title = x_title.get('text', '')
         self.assertIn('AMBER guides', x_title or '')
+
+    def test_overview_clinvar_markers(self):
+        variants = [
+            {
+                'uid': '1',
+                'accession': 'VCV1',
+                'title': 'p.Leu2Val',
+                'protein_change': 'L2V',
+                'residue': 2,
+                'classification': 'Pathogenic',
+                'review_status': 'criteria provided',
+                'url': 'https://www.ncbi.nlm.nih.gov/clinvar/variation/1/',
+            },
+            {
+                'uid': '2',
+                'accession': 'VCV2',
+                'title': 'p.Arg2Cys',
+                'protein_change': 'R2C',
+                'residue': 2,
+                'classification': 'Uncertain significance',
+                'review_status': 'criteria provided',
+                'url': 'https://www.ncbi.nlm.nih.gov/clinvar/variation/2/',
+            },
+        ]
+        fig = build_overview_figure(
+            'TESTGENE',
+            guide_positions=[1],
+            store=self._mock_store(),
+            clinvar_variants=variants,
+        )
+        payload = json.loads(fig.to_json())
+        scatter = [t for t in payload['data'] if t.get('type') == 'scatter']
+        self.assertEqual(len(scatter), 1)
+        self.assertEqual(sorted(scatter[0]['x']), [2, 2])
+        colors = scatter[0]['marker']['color']
+        self.assertIn('#b91c1c', colors)
+        self.assertIn('#2563eb', colors)
+        custom = scatter[0].get('customdata') or []
+        self.assertEqual(len(custom), 2)
+        self.assertTrue(all(isinstance(u, str) and u.startswith('http') for u in custom))
+        hover = scatter[0].get('hovertext') or []
+        self.assertTrue(any('Click to open in ClinVar' in (h or '') for h in hover))
+
+    def test_overview_empty_clinvar_still_builds(self):
+        fig = build_overview_figure(
+            'TESTGENE',
+            guide_positions=[1],
+            store=self._mock_store(),
+            clinvar_variants=[],
+            clinvar_empty_message='No ClinVar protein variants mapped',
+        )
+        payload = json.loads(fig.to_json())
+        self.assertTrue(payload['data'] or payload['layout'])
+        titles = [a.get('text', '') for a in payload['layout'].get('annotations', [])]
+        self.assertTrue(any('ClinVar variants' in (t or '') for t in titles))
+        self.assertTrue(any('No ClinVar protein variants mapped' in (t or '') for t in titles))
 
     def test_full_screen_lfc_only_ten_rows(self):
         fig = build_full_screen_figure('TESTGENE', guide_positions=[1], store=self._mock_store())

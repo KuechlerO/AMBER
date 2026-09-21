@@ -1,4 +1,5 @@
 # services.py
+import re
 import requests
 from .pipeline import run_pipeline
 
@@ -9,19 +10,38 @@ class UserInputError(Exception):
     pass
 
 
+# UniProt accession pattern (Swiss-Prot + TrEMBL), optional isoform suffix (-1, -2, …).
+# Examples: P04439, A0A5B9, A0A075B6S1, P60709-1
+_UNIPROT_ACCESSION_RE = re.compile(
+    r'^(?:'
+    r'[OPQ][0-9][A-Z0-9]{3}[0-9]'
+    r'|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2}'
+    r')(?:-\d+)?$',
+    re.IGNORECASE,
+)
+
+
 def normalize_input_id(raw_id: str) -> str:
-    """Strip surrounding whitespace and remove internal spaces from IDs."""
-    return ''.join((raw_id or '').split())
+    """Strip whitespace/spaces and uppercase UniProt / Ensembl IDs."""
+    return ''.join((raw_id or '').split()).upper()
+
+
+def looks_like_uniprot_accession(uniprot_id: str) -> bool:
+    """True if the string matches UniProt accession syntax (no network call)."""
+    return bool(_UNIPROT_ACCESSION_RE.match(normalize_input_id(uniprot_id)))
 
 
 # tests if UniProt ID is valid
 def is_valid_uniprot_id(uniprot_id: str) -> bool:
     uid = normalize_input_id(uniprot_id)
-    if not uid or uid[0] not in ['P', 'O', 'Q']:
+    if not looks_like_uniprot_accession(uid):
         return False
 
     url = f"https://rest.uniprot.org/uniprotkb/{uid}.json"
-    response = requests.get(url)
+    try:
+        response = requests.get(url, timeout=30)
+    except requests.RequestException:
+        return False
     return response.status_code == 200
 
 # tests if Ensembl ID is valid

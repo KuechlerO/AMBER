@@ -15,8 +15,9 @@ class ScreenPlotViewTest(TestCase):
     @patch('designer.views.get_form_data')
     @patch('designer.views.resolve_domain_layout')
     @patch('designer.views.screen_plot_eligibility')
+    @patch('designer.views.fetch_clinvar_protein_variants')
     def test_overview_returns_figure_without_library(
-        self, mock_eligibility, mock_domains, mock_form_data
+        self, mock_clinvar, mock_eligibility, mock_domains, mock_form_data
     ):
         mock_eligibility.return_value = {
             'available': False,
@@ -24,6 +25,7 @@ class ScreenPlotViewTest(TestCase):
             'reason': 'not_in_library',
         }
         mock_domains.return_value = ([], 'none')
+        mock_clinvar.return_value = ([], None)
         mock_form_data.return_value = {
             'uniprot_id': 'P99999',
             'uniprot_accession': 'P99999',
@@ -35,7 +37,7 @@ class ScreenPlotViewTest(TestCase):
             'data': [],
             'layout': {'title': {'text': 'TESTGENE'}},
         })
-        with patch('designer.views.build_overview_figure', return_value=mock_fig):
+        with patch('designer.views.build_overview_figure', return_value=mock_fig) as mock_build:
             with patch('designer.views.get_filtered_rows', return_value=[{'position': 1, 'sgrna_seq': 'A'}]):
                 with patch('designer.views.get_screen_data_store') as mock_store:
                     store = MagicMock()
@@ -49,6 +51,11 @@ class ScreenPlotViewTest(TestCase):
         data = resp.json()
         self.assertTrue(data['available'])
         self.assertIn('figure', data)
+        self.assertEqual(data.get('clinvar_count'), 0)
+        mock_clinvar.assert_called_once()
+        kwargs = mock_build.call_args.kwargs
+        self.assertEqual(kwargs.get('clinvar_variants'), [])
+
 
     @patch('designer.views.screen_plot_eligibility')
     def test_full_plot_returns_202_while_loading(self, mock_eligibility):

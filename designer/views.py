@@ -12,6 +12,7 @@ from django.views.decorators.cache import never_cache
 from django.conf import settings
 import csv
 from .services import run_analysis, UserInputError, normalize_input_id  # for errors
+from .uniprot_gene_search import GeneSearchError, search_uniprot_by_gene_symbol
 from .result_store import (
     save_analysis_results,
     get_full_rows,
@@ -22,6 +23,11 @@ from .result_store import (
 from .pipeline import apply_duplicate_mode, normalize_duplicate_mode
 from .score_thresholds import threshold_legend_context
 from .coverage_stats import build_coverage_figure, compute_coverage_stats
+from .clinvar import (
+    attach_clinvar_to_rows,
+    fetch_clinvar_protein_variants,
+    index_clinvar_by_residue,
+)
 from .protein_map import (
     alphafold_pdb_path,
     alphafold_pdb_url,
@@ -48,7 +54,7 @@ import math
 from pathlib import Path
 
 DEFAULT_COLUMNS = [
-    'position', 'wt_codon', 'wt_aa', 'mut_aa',
+    'position', 'wt_codon', 'wt_aa', 'mut_aa', 'clinvar',
     'outcomes', 'avg_alpha_score', 'alpha_score',
     'esm1b_outcomes', 'avg_esm1b_score', 'esm1b_score',
     'cadd_outcomes', 'avg_cadd_phred', 'cadd_phred',
@@ -61,6 +67,7 @@ COLUMN_LABELS = {
     'wt_codon': 'WT Codon',
     'wt_aa': 'WT AA',
     'mut_aa': 'Mutated AA',
+    'clinvar': 'ClinVar',
     'outcomes': 'AlphaMissense Scores',
     'avg_alpha_score': 'avg. AlphaMissense Score',
     'alpha_score': 'max AlphaMissense Score',
@@ -84,6 +91,7 @@ DISPLAY_COLUMNS_MAP = [
     ('wt_codon', 'WT Codon'),
     ('wt_aa', 'WT AA'),
     ('mut_aa', 'Mutated AA'),
+    ('clinvar', 'ClinVar'),
     ('outcomes', 'AlphaMissense Scores'),
     ('avg_alpha_score', 'avg. AlphaMissense Score'),
     ('alpha_score', 'max AlphaMissense Score'),
@@ -106,6 +114,7 @@ EXPORT_COLUMN_MAPPING = {
     'wt_codon': ('WT Codon', 'wt_codon'),
     'wt_aa': ('WT AA', 'wt_aa'),
     'mut_aa': ('Mutated AA', 'mut_aa'),
+    'clinvar': ('ClinVar', 'clinvar'),
     'outcomes': ('AlphaMissense Scores', 'outcomes'),
     'avg_alpha_score': ('avg. AlphaMissense Score', 'avg_alpha_score'),
     'alpha_score': ('max AlphaMissense Score', 'alpha_score'),
@@ -325,6 +334,38 @@ def _screen_plot_context(form_data):
     }
 
 
+def _clinvar_for_results(form_data):
+    """Fetch ClinVar once and index by residue for table annotation."""
+    gene_symbol = (form_data.get('gene_symbol') or '').strip()
+    if not gene_symbol:
+        gene_symbol = (form_data.get('gene_name') or '').strip()
+    accession = normalize_uniprot_accession(
+        form_data.get('uniprot_accession') or form_data.get('uniprot_id') or ''
+    )
+    uniprot_id = (form_data.get('uniprot_id') or '').strip()
+    if gene_symbol and gene_symbol.upper() in {
+        accession.upper(),
+        uniprot_id.upper(),
+    }:
+        gene_symbol = (form_data.get('gene_symbol') or '').strip()
+
+    try:
+        protein_length = int(form_data.get('protein_length') or 0)
+    except (TypeError, ValueError):
+        protein_length = 0
+
+    variants, error = fetch_clinvar_protein_variants(
+        gene_symbol,
+        protein_length=protein_length if protein_length > 0 else None,
+    )
+    by_residue = index_clinvar_by_residue(variants)
+    return {
+        'clinvar_by_residue': by_residue,
+        'clinvar_variant_count': len(variants),
+        'clinvar_error': error,
+    }
+
+
 def _build_results_context(result_rows, form_data, no_guide_rows=None, full_rows=None):
     unique_positions = sorted({row['position'] for row in result_rows}) if result_rows else []
     no_guide_rows = no_guide_rows or []
@@ -332,24 +373,32 @@ def _build_results_context(result_rows, form_data, no_guide_rows=None, full_rows
     # both ≥ and < cutoff fragments appear.
     duplicate_mode = normalize_duplicate_mode(form_data.get('duplicate_mode', 'best'))
     coverage_rows = apply_duplicate_mode(full_rows or result_rows, duplicate_mode)
+
+    clinvar_ctx = _clinvar_for_results(form_data)
+    by_residue = clinvar_ctx['clinvar_by_residue']
+    annotated_rows = attach_clinvar_to_rows(result_rows, by_residue)
+    annotated_no_guide = attach_clinvar_to_rows(no_guide_rows, by_residue)
+
     return {
-        'results': result_rows,
+        'results': annotated_rows,
         'position_count': len(unique_positions),
-        'guide_count': len(result_rows),
-        'no_guide_positions': no_guide_rows,
-        'no_guide_count': len(no_guide_rows),
+        'guide_count': len(annotated_rows),
+        'no_guide_positions': annotated_no_guide,
+        'no_guide_count': len(annotated_no_guide),
         'show_editor_in_no_guide': form_data.get('editor') == 'BOTH',
         'display_columns': [COLUMN_LABELS.get(col, col) for col in form_data.get('selected_columns', [])],
         'display_columns_map': DISPLAY_COLUMNS_MAP,
         'sortable_columns': SORTABLE_COLUMNS,
         'numeric_sort_keys_json': json.dumps(sorted(NUMERIC_SORT_COLUMNS)),
         'form_data': form_data,
+        'clinvar_variant_count': clinvar_ctx['clinvar_variant_count'],
+        'clinvar_error': clinvar_ctx['clinvar_error'],
         **threshold_legend_context(),
         **_screen_plot_context(form_data),
         **_coverage_context(
-            result_rows,
+            annotated_rows,
             form_data,
-            no_guide_rows,
+            annotated_no_guide,
             coverage_rows=coverage_rows,
         ),
     }
@@ -435,6 +484,8 @@ def _rows_for_export(request):
     duplicate_mode = normalize_duplicate_mode(form_data.get('duplicate_mode', 'best'))
     rows = apply_duplicate_mode(full_rows, duplicate_mode)
     rows = apply_threshold_filter(rows, form_data)
+    clinvar_ctx = _clinvar_for_results(form_data)
+    rows = attach_clinvar_to_rows(rows, clinvar_ctx['clinvar_by_residue'])
     return rows, form_data
 
 
@@ -808,6 +859,32 @@ def screen_plot_overview(request):
     guide_positions = _guide_positions_from_rows(get_filtered_rows(request))
     store = get_screen_data_store()
 
+    # Prefer HGNC symbol for ClinVar; fall back to plot label when it looks like a gene.
+    clinvar_gene = (
+        (form_data.get('gene_symbol') or '').strip()
+        or (form_data.get('gene_name') or '').strip()
+        or gene
+    )
+    if clinvar_gene and clinvar_gene.upper() in {
+        (accession or '').upper(),
+        (uniprot_id or '').upper(),
+    }:
+        # Plot label is a UniProt accession — ClinVar needs a gene symbol.
+        clinvar_gene = (form_data.get('gene_symbol') or '').strip()
+
+    clinvar_variants, clinvar_error = fetch_clinvar_protein_variants(
+        clinvar_gene,
+        protein_length=protein_length,
+    )
+    if clinvar_error and not clinvar_gene:
+        clinvar_empty_message = clinvar_error
+    elif clinvar_error:
+        clinvar_empty_message = clinvar_error
+    elif not clinvar_variants:
+        clinvar_empty_message = 'No ClinVar protein variants mapped'
+    else:
+        clinvar_empty_message = None
+
     # Start screen data only when this gene is in the library (for guide coloring).
     status = screen_plot_eligibility(accession or uniprot_id)
     if status['available']:
@@ -820,6 +897,8 @@ def screen_plot_overview(request):
             store=store,
             protein_length=protein_length,
             domain_layout=domain_layout,
+            clinvar_variants=clinvar_variants,
+            clinvar_empty_message=clinvar_empty_message,
         )
         figure_json = json.loads(fig.to_json())
     except Exception as exc:
@@ -834,6 +913,8 @@ def screen_plot_overview(request):
         'gene': gene,
         'colored_guides': store.is_ready() and status['available'],
         'domain_source': domain_source,
+        'clinvar_count': len(clinvar_variants),
+        'clinvar_error': clinvar_error,
     })
 
 
@@ -1008,6 +1089,24 @@ def screen_enrichment_plot(request):
 
 def tutorial(request):
     return render(request, 'designer/tutorial.html')
+
+
+@require_GET
+@never_cache
+def gene_uniprot_search(request):
+    """JSON: resolve a gene symbol to human UniProt accessions for the home picker."""
+    query = (request.GET.get('q') or '').strip()
+    try:
+        results = search_uniprot_by_gene_symbol(query)
+    except GeneSearchError as exc:
+        return JsonResponse({'error': str(exc), 'results': []}, status=400)
+    except Exception:
+        return JsonResponse(
+            {'error': 'Gene lookup failed. Please try again.', 'results': []},
+            status=502,
+        )
+    return JsonResponse({'query': query, 'results': results})
+
 
 def about(request):
     return render(request, 'designer/about.html')

@@ -22,6 +22,16 @@ MARKER_COLORS = {
 MULTI_MARKER_COLOR = '#eab308'
 _DEFAULT_GUIDE_COLOR = 'rgb(30,60,120)'
 _DOMAIN_NEUTRAL = 'rgb(190,190,190)'
+_CLINVAR_MAX_LANES = 8
+_CLINVAR_COLORS = {
+    'Pathogenic': '#b91c1c',
+    'Likely pathogenic': '#ea580c',
+    'Uncertain significance': '#2563eb',
+    'Likely benign': '#65a30d',
+    'Benign': '#16a34a',
+    'Conflicting classifications': '#7c3aed',
+    'Unknown': '#9ca3af',
+}
 
 
 def _diverging_norm(lfc_series: pd.Series):
@@ -196,6 +206,152 @@ def _add_domain_track(
     )
 
 
+def _clinvar_color(classification: str | None) -> str:
+    key = (classification or '').strip()
+    if key in _CLINVAR_COLORS:
+        return _CLINVAR_COLORS[key]
+    lower = key.lower()
+    if 'conflict' in lower:
+        return _CLINVAR_COLORS['Conflicting classifications']
+    if lower == 'pathogenic':
+        return _CLINVAR_COLORS['Pathogenic']
+    if lower == 'likely pathogenic':
+        return _CLINVAR_COLORS['Likely pathogenic']
+    if 'uncertain' in lower:
+        return _CLINVAR_COLORS['Uncertain significance']
+    if lower == 'likely benign':
+        return _CLINVAR_COLORS['Likely benign']
+    if lower == 'benign':
+        return _CLINVAR_COLORS['Benign']
+    return _CLINVAR_COLORS['Unknown']
+
+
+def _assign_clinvar_lanes(
+    variants: list[dict],
+    *,
+    max_lanes: int = _CLINVAR_MAX_LANES,
+) -> list[tuple[dict, int, int]]:
+    """
+    Assign each variant a lane (0..max_lanes-1) for stacked display.
+
+    Returns list of (variant, lane, overflow_count_at_residue).
+    overflow_count is total variants at that residue minus those shown.
+    """
+    by_residue: dict[int, list[dict]] = {}
+    for v in variants:
+        try:
+            residue = int(v.get('residue'))
+        except (TypeError, ValueError):
+            continue
+        by_residue.setdefault(residue, []).append(v)
+
+    assigned: list[tuple[dict, int, int]] = []
+    for residue in sorted(by_residue):
+        group = by_residue[residue]
+        overflow = max(0, len(group) - max_lanes)
+        for idx, variant in enumerate(group[:max_lanes]):
+            assigned.append((variant, idx, overflow if idx == 0 else 0))
+    return assigned
+
+
+def _add_clinvar_track(
+    fig: go.Figure,
+    clinvar_variants: list[dict] | None,
+    clinvar_row: int,
+    plt_range: tuple[int, int],
+    pro_len: int,
+    *,
+    empty_message: str | None = None,
+) -> None:
+    fig.update_yaxes(range=[-0.15, 1.05], visible=False, showticklabels=False, row=clinvar_row, col=1)
+    fig.update_xaxes(range=[plt_range[0] - 1, plt_range[1] + 1], row=clinvar_row, col=1)
+
+    fig.add_shape(
+        type='line',
+        x0=0,
+        x1=pro_len,
+        y0=0.0,
+        y1=0.0,
+        line=dict(color='black', width=1.5),
+        row=clinvar_row,
+        col=1,
+    )
+
+    variants = list(clinvar_variants or [])
+    if not variants:
+        fig.add_annotation(
+            text=empty_message or 'No ClinVar protein variants mapped',
+            x=(plt_range[0] + plt_range[1]) / 2,
+            y=0.5,
+            showarrow=False,
+            font=dict(size=11, color='#666'),
+            row=clinvar_row,
+            col=1,
+        )
+        return
+
+    assigned = _assign_clinvar_lanes(variants)
+    if not assigned:
+        fig.add_annotation(
+            text=empty_message or 'No ClinVar protein variants mapped',
+            x=(plt_range[0] + plt_range[1]) / 2,
+            y=0.5,
+            showarrow=False,
+            font=dict(size=11, color='#666'),
+            row=clinvar_row,
+            col=1,
+        )
+        return
+
+    xs, ys, colors, hovers, customdata = [], [], [], [], []
+    for variant, lane, overflow in assigned:
+        residue = int(variant['residue'])
+        # Stack upward from the backbone.
+        y = 0.12 + lane * (0.85 / max(_CLINVAR_MAX_LANES, 1))
+        xs.append(residue)
+        ys.append(y)
+        colors.append(_clinvar_color(variant.get('classification')))
+        title = variant.get('title') or 'ClinVar variant'
+        protein_change = variant.get('protein_change') or '—'
+        classification = variant.get('classification') or 'Unknown'
+        review = variant.get('review_status') or '—'
+        accession = variant.get('accession') or variant.get('uid') or '—'
+        url = variant.get('url') or ''
+        hover = (
+            f'{title}<br>'
+            f'Protein: {protein_change} (residue {residue})<br>'
+            f'Classification: {classification}<br>'
+            f'Review: {review}<br>'
+            f'{accession}'
+        )
+        if url:
+            hover += '<br>Click to open in ClinVar'
+        if overflow:
+            hover += f'<br>+{overflow} more at this site'
+        hovers.append(hover)
+        customdata.append(url)
+
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys,
+            mode='markers',
+            marker=dict(
+                symbol='line-ns',
+                size=16,
+                color=colors,
+                line=dict(width=2.5, color=colors),
+            ),
+            customdata=customdata,
+            hovertext=hovers,
+            hoverinfo='text',
+            showlegend=False,
+        ),
+        row=clinvar_row,
+        col=1,
+    )
+
+
 def _add_guide_track(
     fig: go.Figure,
     guide_positions: list[int],
@@ -316,8 +472,10 @@ def build_overview_figure(
     *,
     protein_length: int | None = None,
     domain_layout: list[dict] | None = None,
+    clinvar_variants: list[dict] | None = None,
+    clinvar_empty_message: str | None = None,
 ) -> go.Figure:
-    """Domains + AMBER guide track (always shown below the results table)."""
+    """Domains + ClinVar + AMBER guide tracks (shown below the results table)."""
     store = store or ScreenDataStore.get()
 
     if protein_length is not None:
@@ -339,25 +497,35 @@ def build_overview_figure(
 
     color_store = store if store.is_ready() else None
     guide_title = f'AMBER guides ({len(guide_positions)} positions)'
+    clinvar_n = len(clinvar_variants or [])
+    clinvar_title = f'ClinVar variants ({clinvar_n})'
 
     fig = make_subplots(
-        rows=2,
+        rows=3,
         cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.12,
-        row_heights=[0.55, 0.45],
-        subplot_titles=['UniProt domains', None],
+        vertical_spacing=0.08,
+        row_heights=[0.40, 0.30, 0.30],
+        subplot_titles=['UniProt domains', clinvar_title, None],
     )
 
     _add_domain_track(fig, domain_layout or [], 1, plt_range, pro_len)
-    _add_guide_track(fig, guide_positions, 2, plt_range, color_store, gene)
+    _add_clinvar_track(
+        fig,
+        clinvar_variants,
+        2,
+        plt_range,
+        pro_len,
+        empty_message=clinvar_empty_message,
+    )
+    _add_guide_track(fig, guide_positions, 3, plt_range, color_store, gene)
 
-    # Title under the guide track so it does not overlap the domains subplot above.
-    fig.update_xaxes(title_text=guide_title, title_font=dict(size=12), row=2, col=1)
+    # Title under the guide track so it does not overlap the ClinVar subplot above.
+    fig.update_xaxes(title_text=guide_title, title_font=dict(size=12), row=3, col=1)
     fig.update_xaxes(range=[plt_range[0] - 1, plt_range[1] + 1], row=1, col=1)
     fig.update_layout(
         title=f'{gene} — protein map',
-        height=300,
+        height=380,
         showlegend=False,
         margin=dict(l=60, r=20, t=50, b=55),
     )
