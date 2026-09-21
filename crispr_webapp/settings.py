@@ -173,6 +173,14 @@ CADD_TIMEOUT_SEC = int(os.getenv('CADD_TIMEOUT_SEC', '20'))
 CADD_MAX_WORKERS = int(os.getenv('CADD_MAX_WORKERS', '4'))
 CADD_CACHE_DIR = os.getenv('CADD_CACHE_DIR', None)
 
+# ClinVar E-utilities (protein-map overview track)
+CLINVAR_EUTILS_TOOL = os.getenv('CLINVAR_EUTILS_TOOL', 'amber-crispr-tool')
+CLINVAR_EUTILS_EMAIL = os.getenv('CLINVAR_EUTILS_EMAIL', 'amber-clinvar@localhost')
+NCBI_API_KEY = os.getenv('NCBI_API_KEY', '')
+CLINVAR_TIMEOUT_SEC = int(os.getenv('CLINVAR_TIMEOUT_SEC', '20'))
+CLINVAR_CACHE_TTL_SEC = int(os.getenv('CLINVAR_CACHE_TTL_SEC', str(7 * 24 * 3600)))
+CLINVAR_CACHE_DIR = os.getenv('CLINVAR_CACHE_DIR', None)
+
 # ---- Enable subpath deployment ----
 FORCE_SCRIPT_NAME = os.getenv('FORCE_SCRIPT_NAME', None)
 # 2. Construct STATIC_URL dynamically
