@@ -1029,6 +1029,12 @@ def run_pipeline(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, wi
 
     threshold = float(alpha_threshold)
     patho_df = get_alphamissense_from_db(uniprot_id, threshold)
+    if patho_df is None or patho_df.empty:
+        raise ValueError(
+            f'No AlphaMissense scores found for {uniprot_id}. '
+            'AMBER needs AlphaMissense coverage to design and rank guides. '
+            'Try a Swiss-Prot accession for this gene (use Look up gene on the home page).'
+        )
     exon_data = get_exon_boundaries(transcript_id, len(cds))
 
     all_rows = []

@@ -70,7 +70,39 @@ def _parse_entry(entry: dict[str, Any]) -> dict[str, Any] | None:
         'protein_name': _protein_name(entry),
         'length': length_int,
         'reviewed': _is_reviewed(entry),
+        'am_available': False,
     }
+
+
+def alphamissense_accessions_present(accessions: list[str]) -> set[str]:
+    """Return the subset of accessions that have AlphaMissense rows in legacy_db."""
+    ids = [str(a).strip().upper() for a in accessions if a]
+    if not ids:
+        return set()
+    from .models import Alpha_missense
+
+    return set(
+        Alpha_missense.objects.using('legacy_db')
+        .filter(uniprot_id__in=ids)
+        .values_list('uniprot_id', flat=True)
+        .distinct()
+    )
+
+
+def annotate_am_availability(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Attach am_available and re-sort: Swiss-Prot + AM first."""
+    present = alphamissense_accessions_present([r.get('accession', '') for r in rows])
+    for row in rows:
+        acc = str(row.get('accession') or '').strip().upper()
+        row['am_available'] = acc in present
+    rows.sort(
+        key=lambda row: (
+            not row.get('reviewed', False),
+            not row.get('am_available', False),
+            row.get('accession') or '',
+        )
+    )
+    return rows
 
 
 def _search_query(query: str, *, size: int) -> list[dict[str, Any]]:
@@ -92,7 +124,6 @@ def _search_query(query: str, *, size: int) -> list[dict[str, Any]]:
             continue
         seen.add(parsed['accession'])
         rows.append(parsed)
-    rows.sort(key=lambda row: (not row['reviewed'], row['accession']))
     return rows
 
 
@@ -105,8 +136,8 @@ def search_uniprot_by_gene_symbol(
     """
     Search UniProt for human (default) proteins matching a gene symbol.
 
-    Swiss-Prot (reviewed) entries are returned first. Raises GeneSearchError
-    for invalid input; returns [] when UniProt has no matches.
+    Swiss-Prot (reviewed) entries with AlphaMissense coverage are returned first.
+    Raises GeneSearchError for invalid input; returns [] when UniProt has no matches.
     """
     raw = (symbol or '').strip()
     if not raw:
@@ -138,4 +169,4 @@ def search_uniprot_by_gene_symbol(
             'Could not reach UniProt to look up this gene. Try again shortly.'
         ) from exc
 
-    return rows
+    return annotate_am_availability(rows)

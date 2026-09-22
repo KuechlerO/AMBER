@@ -702,11 +702,30 @@ select:focus {
     color: #14532d;
 }
 
+.gene-picker-badge-am {
+    background: color-mix(in srgb, #0369a1 30%, transparent);
+    color: #0c4a6e;
+}
+
+.gene-picker-badge-no-am {
+    background: color-mix(in srgb, #b45309 28%, transparent);
+    color: #7c2d12;
+}
+
+.gene-picker-item-unsupported {
+    opacity: 0.78;
+}
+
 .gene-picker-selected {
     display: block;
     margin-top: 0.4rem;
     font-size: 0.86rem;
     color: var(--text-secondary);
+}
+
+.gene-picker-selected-warn {
+    color: #9a3412;
+    font-weight: 600;
 }
 
 .gene-picker-modal-footer {

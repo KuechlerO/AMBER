@@ -6,6 +6,7 @@ from django.test import Client, SimpleTestCase, TestCase
 
 from designer.uniprot_gene_search import (
     GeneSearchError,
+    annotate_am_availability,
     looks_like_gene_symbol,
     search_uniprot_by_gene_symbol,
 )
@@ -28,6 +29,40 @@ class LooksLikeGeneSymbolTest(SimpleTestCase):
         self.assertFalse(looks_like_gene_symbol(''))
 
 
+class AnnotateAmAvailabilityTest(SimpleTestCase):
+    @patch('designer.uniprot_gene_search.alphamissense_accessions_present')
+    def test_flags_and_sorts_am_first_within_reviewed(self, mock_present):
+        mock_present.return_value = {'P04439'}
+        rows = annotate_am_availability([
+            {
+                'accession': 'A0A0G2JMB4',
+                'gene': 'TRBC2',
+                'protein_name': 'x',
+                'length': 179,
+                'reviewed': False,
+            },
+            {
+                'accession': 'P04439',
+                'gene': 'HLA-A',
+                'protein_name': 'y',
+                'length': 365,
+                'reviewed': True,
+            },
+            {
+                'accession': 'P01850',
+                'gene': 'TRBC1',
+                'protein_name': 'z',
+                'length': 176,
+                'reviewed': True,
+            },
+        ])
+        self.assertTrue(rows[0]['am_available'])
+        self.assertEqual(rows[0]['accession'], 'P04439')
+        self.assertFalse(rows[1]['am_available'])
+        self.assertEqual(rows[1]['accession'], 'P01850')
+        self.assertFalse(rows[2]['am_available'])
+
+
 class SearchUniprotByGeneSymbolTest(SimpleTestCase):
     def test_rejects_uniprot_shaped_input(self):
         with self.assertRaises(GeneSearchError):
@@ -37,8 +72,9 @@ class SearchUniprotByGeneSymbolTest(SimpleTestCase):
         with self.assertRaises(GeneSearchError):
             search_uniprot_by_gene_symbol('  ')
 
+    @patch('designer.uniprot_gene_search.alphamissense_accessions_present', return_value=set())
     @patch('designer.uniprot_gene_search._http_get')
-    def test_parses_and_sorts_reviewed_first(self, mock_get):
+    def test_parses_and_sorts_reviewed_first(self, mock_get, _mock_am):
         response = MagicMock()
         response.raise_for_status = MagicMock()
         response.json.return_value = _fake_uniprot_payload([
@@ -67,11 +103,13 @@ class SearchUniprotByGeneSymbolTest(SimpleTestCase):
         self.assertEqual([r['accession'] for r in rows], ['P01850', 'A0A5H1ZRT1'])
         self.assertTrue(rows[0]['reviewed'])
         self.assertFalse(rows[1]['reviewed'])
+        self.assertFalse(rows[0]['am_available'])
         self.assertEqual(rows[0]['gene'], 'TRBC1')
         self.assertEqual(rows[0]['length'], 176)
 
+    @patch('designer.uniprot_gene_search.alphamissense_accessions_present', return_value=set())
     @patch('designer.uniprot_gene_search._http_get')
-    def test_falls_back_when_exact_empty(self, mock_get):
+    def test_falls_back_when_exact_empty(self, mock_get, _mock_am):
         empty = MagicMock()
         empty.raise_for_status = MagicMock()
         empty.json.return_value = {'results': []}
@@ -96,8 +134,9 @@ class SearchUniprotByGeneSymbolTest(SimpleTestCase):
         self.assertEqual(rows[0]['accession'], 'P09668')
         self.assertEqual(mock_get.call_count, 2)
 
+    @patch('designer.uniprot_gene_search.alphamissense_accessions_present', return_value=set())
     @patch('designer.uniprot_gene_search._http_get')
-    def test_empty_results(self, mock_get):
+    def test_empty_results(self, mock_get, _mock_am):
         response = MagicMock()
         response.raise_for_status = MagicMock()
         response.json.return_value = {'results': []}
@@ -114,12 +153,14 @@ class GeneUniprotSearchViewTest(TestCase):
             'protein_name': 'T cell receptor beta constant 1',
             'length': 176,
             'reviewed': True,
+            'am_available': False,
         }]
         c = Client()
         r = c.get('/api/gene-uniprot/', {'q': 'TRBC1'})
         self.assertEqual(r.status_code, 200)
         data = r.json()
         self.assertEqual(data['results'][0]['accession'], 'P01850')
+        self.assertFalse(data['results'][0]['am_available'])
 
     @patch('designer.views.search_uniprot_by_gene_symbol')
     def test_amber_endpoint_bad_query(self, mock_search):
@@ -137,6 +178,7 @@ class GeneUniprotSearchViewTest(TestCase):
             'protein_name': 'Cathepsin H',
             'length': 335,
             'reviewed': True,
+            'am_available': True,
         }]
         c = Client()
         r = c.get('/saffron/api/gene-uniprot/', {'q': 'CTSH'})
@@ -160,3 +202,28 @@ class HomePickerMarkupTest(SimpleTestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'gene-picker-modal')
         self.assertContains(r, 'Look up gene')
+
+
+class EmptyAlphamissensePipelineTest(SimpleTestCase):
+    @patch('designer.pipeline.get_exon_boundaries')
+    @patch('designer.pipeline.get_alphamissense_from_db')
+    @patch('designer.pipeline.get_cds_and_transcript_from_uniprot')
+    def test_raises_when_am_missing(self, mock_cds, mock_am, mock_exons):
+        import pandas as pd
+        from designer.pipeline import run_pipeline
+
+        mock_cds.return_value = ('ATG' * 10, 'ENST00000000001', 'TRBC2')
+        mock_am.return_value = pd.DataFrame(
+            columns=['protein_variant', 'pathogenicity score', 'a.a.1', 'position', 'a.a.2']
+        )
+        with self.assertRaises(ValueError) as ctx:
+            run_pipeline(
+                uniprot_id='A0A0G2JMB4',
+                editor='ABE',
+                alpha_threshold=0.0,
+                top_sgrnas=5,
+                window_min=4,
+                window_max=8,
+            )
+        self.assertIn('No AlphaMissense scores found', str(ctx.exception))
+        mock_exons.assert_not_called()

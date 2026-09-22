@@ -94,10 +94,23 @@
                 var bits = [accession];
                 if (meta && meta.gene) bits.push(meta.gene);
                 if (meta && meta.reviewed) bits.push('Swiss-Prot');
+                if (meta && meta.am_available) {
+                    bits.push('AlphaMissense');
+                } else if (meta && meta.am_available === false) {
+                    bits.push('no AlphaMissense — analysis will fail');
+                }
                 note.textContent = 'Selected: ' + bits.join(' · ');
                 note.hidden = false;
+                note.classList.toggle('gene-picker-selected-warn', meta && meta.am_available === false);
             }
             input.focus();
+        }
+
+        function amBadgeHtml(row) {
+            if (row.am_available) {
+                return ' <span class="gene-picker-badge gene-picker-badge-am">AlphaMissense</span>';
+            }
+            return ' <span class="gene-picker-badge gene-picker-badge-no-am">No AM data</span>';
         }
 
         function renderResults(results, query) {
@@ -112,30 +125,27 @@
                 return;
             }
 
-            var reviewed = results.filter(function (r) { return r.reviewed; });
-            if (results.length === 1 && results[0].reviewed) {
-                selectAccession(results[0].accession, results[0]);
-                var note = document.getElementById('gene-picker-selected');
-                if (note) {
-                    note.textContent = 'Selected ' + results[0].accession +
-                        (results[0].gene ? ' (' + results[0].gene + ')' : '') +
-                        ' — sole Swiss-Prot match.';
-                    note.hidden = false;
-                }
-                return;
-            }
+            var withAm = results.filter(function (r) { return r.am_available; });
 
+            // Always show the full list — never auto-select.
             pendingChoice = true;
-            setStatus(
-                'Choose one accession to continue' +
-                (reviewed.length ? ' (Swiss-Prot listed first).' : '.'),
-                false
-            );
+            if (!withAm.length) {
+                setStatus(
+                    'None of these accessions have AlphaMissense data in AMBER. ' +
+                    'Selecting one will fail analysis — try another gene or isoform.',
+                    true
+                );
+            } else {
+                setStatus(
+                    'Choose one accession to continue (Swiss-Prot and AlphaMissense coverage listed first).',
+                    false
+                );
+            }
 
             results.forEach(function (row, idx) {
                 var id = 'gene-pick-' + idx;
                 var label = document.createElement('label');
-                label.className = 'gene-picker-item';
+                label.className = 'gene-picker-item' + (row.am_available ? '' : ' gene-picker-item-unsupported');
                 label.setAttribute('for', id);
 
                 var radio = document.createElement('input');
@@ -154,7 +164,8 @@
                     '<strong class="gene-picker-accession">' + escapeHtml(row.accession) + '</strong>' +
                     (row.reviewed
                         ? ' <span class="gene-picker-badge gene-picker-badge-reviewed">Swiss-Prot</span>'
-                        : ' <span class="gene-picker-badge">TrEMBL</span>');
+                        : ' <span class="gene-picker-badge">TrEMBL</span>') +
+                    amBadgeHtml(row);
 
                 var detail = document.createElement('span');
                 detail.className = 'gene-picker-item-detail';
