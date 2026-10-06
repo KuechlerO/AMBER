@@ -1,6 +1,6 @@
 """Tests for ID normalization, score filters, and coverage stats."""
 
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.test import SimpleTestCase
 
@@ -125,3 +125,58 @@ class CoverageStatsTest(SimpleTestCase):
         self.assertAlmostEqual(stats['segment_pct'][('both', 'high')], 1.0)
         self.assertEqual(stats['below_cutoff_positions'], 1)
         self.assertEqual(stats['above_cutoff_positions'], 2)
+
+
+class EnsemblHttpRetryTest(SimpleTestCase):
+    def test_http_get_retries_500_then_succeeds(self):
+        from designer.pipeline import _http_get
+
+        bad = Mock(status_code=500)
+        ok = Mock(status_code=200)
+        sleeps = []
+        with patch('designer.pipeline.requests.get', side_effect=[bad, ok]) as mock_get:
+            resp = _http_get('https://rest.ensembl.org/x', retries=3, sleeper=sleeps.append, timeout=5)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mock_get.call_count, 2)
+        self.assertEqual(sleeps, [1.5])
+
+    def test_get_exon_boundaries_falls_back_to_versioned_id(self):
+        from designer.pipeline import get_exon_boundaries
+
+        bare_fail = Mock(status_code=500, content=b'')
+        versioned_ok = Mock(status_code=200, content=b'{}')
+        versioned_ok.json.return_value = {
+            'mappings': [{
+                'seq_region_name': '6',
+                'start': 100,
+                'end': 110,
+                'strand': 1,
+            }],
+        }
+        lookup = Mock(status_code=200)
+        lookup.json.return_value = {'version': 10, 'id': 'ENST00000376809'}
+
+        # _transcript_id_variants calls lookup; then map bare fails; map versioned ok
+        with patch(
+            'designer.pipeline._http_get',
+            side_effect=[lookup, bare_fail, versioned_ok],
+        ) as mock_get:
+            data = get_exon_boundaries('ENST00000376809', 11)
+
+        self.assertEqual(len(data['genomic_blocks']), 1)
+        self.assertEqual(data['genomic_blocks'][0]['chrom'], '6')
+        self.assertIn('ENST00000376809.10', mock_get.call_args_list[2].args[0])
+
+    def test_get_exon_boundaries_raises_friendly_value_error(self):
+        from designer.pipeline import get_exon_boundaries
+
+        fail = Mock(status_code=500, content=b'')
+        lookup = Mock(status_code=200)
+        lookup.json.return_value = {'version': 10}
+        with patch('designer.pipeline._http_get', side_effect=[lookup, fail, fail]):
+            with self.assertRaises(ValueError) as ctx:
+                get_exon_boundaries('ENST00000376809', 1098)
+        msg = str(ctx.exception)
+        self.assertIn('Could not map CDS exons', msg)
+        self.assertIn('try again', msg.lower())
+        self.assertNotIn('raise_for_status', msg)

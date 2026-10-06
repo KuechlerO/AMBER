@@ -11,7 +11,7 @@ from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.cache import never_cache
 from django.conf import settings
 import csv
-from .services import run_analysis, UserInputError, normalize_input_id  # for errors
+from .services import normalize_input_id
 from .uniprot_gene_search import GeneSearchError, search_uniprot_by_gene_symbol
 from .result_store import (
     save_analysis_results,
@@ -19,7 +19,9 @@ from .result_store import (
     get_filtered_rows,
     get_form_data,
     load_analysis_results,
+    session_key_from_request,
 )
+from .analysis_jobs import get_cadd_job_status, get_status, start_analysis
 from .pipeline import apply_duplicate_mode, normalize_duplicate_mode
 from .score_thresholds import threshold_legend_context
 from .coverage_stats import build_coverage_figure, compute_coverage_stats
@@ -54,8 +56,9 @@ import math
 from pathlib import Path
 
 DEFAULT_COLUMNS = [
-    'position', 'wt_codon', 'wt_aa', 'mut_aa', 'clinvar',
+    'position', 'wt_codon', 'wt_aa', 'mut_aa',
     'outcomes', 'avg_alpha_score', 'alpha_score',
+    'clinvar',
     'esm1b_outcomes', 'avg_esm1b_score', 'esm1b_score',
     'cadd_outcomes', 'avg_cadd_phred', 'cadd_phred',
     'sgrna_seq', 'protospacer',
@@ -91,10 +94,10 @@ DISPLAY_COLUMNS_MAP = [
     ('wt_codon', 'WT Codon'),
     ('wt_aa', 'WT AA'),
     ('mut_aa', 'Mutated AA'),
-    ('clinvar', 'ClinVar'),
     ('outcomes', 'AlphaMissense Scores'),
     ('avg_alpha_score', 'avg. AlphaMissense Score'),
     ('alpha_score', 'max AlphaMissense Score'),
+    ('clinvar', 'ClinVar'),
     ('esm1b_outcomes', 'ESM1b Scores'),
     ('avg_esm1b_score', 'avg. ESM1b LLR'),
     ('esm1b_score', 'max ESM1b LLR'),
@@ -108,6 +111,88 @@ DISPLAY_COLUMNS_MAP = [
     ('strand', 'Strand'),
     ('target_position', 'Target Pos.'),
 ]
+
+# Hover/focus help for Guide RNA candidates table headers.
+COLUMN_HELP = {
+    'position': (
+        'Amino-acid position in the UniProt protein (1-based). '
+        'Guides are designed against the matched Ensembl CDS for this accession.'
+    ),
+    'wt_codon': 'Wild-type codon at this position in the coding sequence.',
+    'wt_aa': 'Wild-type amino acid encoded by the WT codon.',
+    'mut_aa': (
+        'Amino acid produced by the highest-scoring AlphaMissense outcome for this guide '
+        '(among outcomes that match the pathogenicity table for this residue).'
+    ),
+    'clinvar': (
+        'ClinVar germline variants mapped to this protein position (NCBI ClinVar via E-utilities). '
+        'Chips show protein change and clinical classification; click opens the ClinVar record. '
+        'Missing (—) when the gene symbol is unknown, ClinVar has no mapped protein variants at '
+        'this residue, residue parsing failed, or the API/cache lookup returned nothing. '
+        'Classifications are ClinVar’s clinical significance labels, not AMBER scores.'
+    ),
+    'outcomes': (
+        'Per-codon AlphaMissense pathogenicity scores for every base-edit outcome of this guide. '
+        'Scores come from the AlphaMissense database (Cheng et al., Science 2023) keyed by '
+        'UniProt accession and protein variant. Format: codon(AA)[score]. Values at or above the '
+        'author likely_pathogenic cutoff (0.564) are highlighted. Missing entries mean that '
+        'outcome AA is not in the AM table for this residue. AlphaMissense drives ranking, '
+        'filters, and coverage.'
+    ),
+    'avg_alpha_score': (
+        'Mean of AlphaMissense scores across all scored outcomes of this guide. '
+        'Empty when no outcome has an AM score.'
+    ),
+    'alpha_score': (
+        'Highest AlphaMissense pathogenicity score among outcomes of this guide '
+        '(same Cheng et al. 2023 scores as the outcomes list). '
+        'Empty when no outcome has an AM score. Highlighted when ≥ 0.564 (display only).'
+    ),
+    'esm1b_outcomes': (
+        'Per-codon ESM1b log-likelihood ratios (LLR) for each guide outcome '
+        '(Brandes et al., Nat Genet 2023). Looked up from local ESM1b score matrices by '
+        'UniProt accession, residue, WT AA, and mutant AA. Format: codon(AA)[LLR]. '
+        'Values at or below −7.5 (author damaging cutoff) are highlighted. Missing when the '
+        'matrix file is absent, the accession/isoform has no matrix, WT AA does not match, '
+        'or the position is out of range.'
+    ),
+    'avg_esm1b_score': (
+        'Mean ESM1b LLR across outcomes that have a score. Empty when all outcomes lack ESM1b.'
+    ),
+    'esm1b_score': (
+        'Most damaging (minimum) ESM1b LLR among outcomes of this guide. '
+        'Empty when no outcome has ESM1b. Highlighted when ≤ −7.5 (display only).'
+    ),
+    'cadd_outcomes': (
+        'Per-codon CADD PHRED scores for guide outcomes (Kircher / Rentzsch et al.; GRCh38). '
+        'Fetched from the CADD web API for genomic SNVs mapped from each coding edit, with disk '
+        'caching. Format: codon(AA)[PHRED]. Values ≥ 20 (top ~1% of SNVs; interpretive, not a '
+        'clinical rule) are highlighted. Missing when exon→genome mapping failed, the API/cache '
+        'had no matching SNV, CADD is still loading in the background, or the request failed '
+        '(AMBER still shows AM/ESM1b results).'
+    ),
+    'avg_cadd_phred': (
+        'Mean CADD PHRED across outcomes that have a score. Empty while CADD is pending or '
+        'when no outcome received a score.'
+    ),
+    'cadd_phred': (
+        'Highest CADD PHRED among outcomes of this guide. Empty while CADD is loading or when '
+        'no genomic SNV could be scored. Highlighted when ≥ 20 (display only).'
+    ),
+    'editor_used': 'Base editor used for this guide: ABE (A→G) or CBE (C→T).',
+    'sgrna_seq': (
+        'Full guide RNA sequence: 20-nt protospacer plus 3-nt PAM as written for the targeting strand.'
+    ),
+    'protospacer': '20-nt spacer (protospacer) portion of the guide RNA.',
+    'pam': 'Protospacer-adjacent motif matched for the selected PAM type (NGG, NG, or NAG).',
+    'strand': (
+        'Strand of the guide relative to the coding sequence (+ sense / − antisense).'
+    ),
+    'target_position': (
+        'Protospacer position(s) (1–20) where editable bases of the target codon fall inside '
+        'your editing window.'
+    ),
+}
 
 EXPORT_COLUMN_MAPPING = {
     'position': ('Position', 'position'),
@@ -243,8 +328,9 @@ def _normalize_analysis_result(analysis_result):
         result.setdefault('guide_rows', [])
         result.setdefault('no_guide_positions', [])
         result.setdefault('cadd_warning', None)
+        result.setdefault('cadd_status', 'done')
         return result
-    return {'guide_rows': analysis_result, 'no_guide_positions': []}
+    return {'guide_rows': analysis_result, 'no_guide_positions': [], 'cadd_status': 'done'}
 
 
 def _coverage_context(result_rows, form_data, no_guide_rows=None, coverage_rows=None):
@@ -388,6 +474,14 @@ def _build_results_context(result_rows, form_data, no_guide_rows=None, full_rows
         'show_editor_in_no_guide': form_data.get('editor') == 'BOTH',
         'display_columns': [COLUMN_LABELS.get(col, col) for col in form_data.get('selected_columns', [])],
         'display_columns_map': DISPLAY_COLUMNS_MAP,
+        'display_column_headers': [
+            {
+                'key': key,
+                'label': label,
+                'help': COLUMN_HELP.get(key, ''),
+            }
+            for key, label in DISPLAY_COLUMNS_MAP
+        ],
         'sortable_columns': SORTABLE_COLUMNS,
         'numeric_sort_keys_json': json.dumps(sorted(NUMERIC_SORT_COLUMNS)),
         'form_data': form_data,
@@ -427,6 +521,7 @@ def _render_results(request, result_rows, full_rows, form_data, no_guide_full=No
         filtered_rows=result_rows,
         no_guide_positions=no_guide_full,
         form_data=form_data,
+        cadd_status=form_data.get('cadd_status'),
     )
     return render(
         request,
@@ -438,6 +533,52 @@ def _render_results(request, result_rows, full_rows, form_data, no_guide_full=No
             full_rows=full_rows,
         ),
     )
+
+
+def _results_from_cache(request):
+    """Render results from the session cache (async job completion / GET)."""
+    cached = load_analysis_results(request)
+    full_rows = cached.get('full_rows') or cached.get('raw_rows')
+    if full_rows is None:
+        return None
+    form_data = dict(cached.get('form_data') or {})
+    if 'cadd_status' not in form_data and cached.get('cadd_status'):
+        form_data['cadd_status'] = cached['cadd_status']
+    result_rows = cached.get('filtered_rows')
+    if result_rows is None:
+        result_rows = _rows_for_display(full_rows, form_data)
+    no_guide_full = cached.get('no_guide_positions', [])
+    no_guide_display = _no_guide_for_display(no_guide_full, form_data)
+    return render(
+        request,
+        'designer/results.html',
+        _build_results_context(
+            result_rows,
+            form_data,
+            no_guide_display,
+            full_rows=full_rows,
+        ),
+    )
+
+
+def _form_from_post(post) -> dict:
+    editor = post.get('editor', 'BOTH')
+    return {
+        'uniprot_id': normalize_input_id(post.get('uniprot_id', '')),
+        'editor': editor,
+        'alpha_threshold': post.get('alpha_threshold', '0.5'),
+        'top_sgrnas': post.get('top_sgrnas', '5'),
+        'window_min': post.get('window_min', '4'),
+        'window_max': post.get('window_max', '8'),
+        'duplicate_mode': normalize_duplicate_mode(post.get('duplicate_mode', 'best')),
+        'pam_type': post.get('pam_type', 'NGG'),
+        'score_filter_mode': post.get('score_filter_mode'),
+        'display_score_cutoff': post.get('display_score_cutoff'),
+        'filter_threshold': post.get('filter_threshold'),
+        'output': post.get('output'),
+        'columns': list(post.getlist('columns')),
+        'selected_columns': resolve_selected_columns(post, editor),
+    }
 
 
 def _refresh_results_from_cache(request):
@@ -492,79 +633,74 @@ def _rows_for_export(request):
 def home(request):
     return render(request, 'designer/home.html', threshold_legend_context())
 
+
 def loading(request):
+    if request.method != 'POST':
+        status = get_status(session_key_from_request(request))
+        if status.get('status') == 'running':
+            return render(request, 'designer/loading.html')
+        return redirect('home')
+    form = _form_from_post(request.POST)
+    start_analysis(session_key_from_request(request), form)
     return render(request, 'designer/loading.html')
+
+
+@require_GET
+def analysis_status(request):
+    """JSON polling endpoint while background analysis runs."""
+    return JsonResponse(get_status(session_key_from_request(request)))
+
+
+@require_GET
+def cadd_status(request):
+    """JSON polling endpoint for deferred CADD enrichment."""
+    return JsonResponse(get_cadd_job_status(session_key_from_request(request)))
+
 
 @never_cache
 def results(request):
     if request.method != 'POST':
+        rendered = _results_from_cache(request)
+        if rendered is not None:
+            return rendered
+        status = get_status(session_key_from_request(request))
+        if status.get('status') == 'running':
+            return render(request, 'designer/loading.html')
+        if status.get('status') == 'error':
+            return render(
+                request,
+                'designer/error.html',
+                {
+                    'error': status.get('error') or 'Analysis failed.',
+                    'error_type': 'user',
+                },
+            )
         return redirect('home')
 
     if request.POST.get('refresh_only') == '1':
         return _refresh_results_from_cache(request)
 
-    uniprot_id = normalize_input_id(request.POST.get('uniprot_id', ''))
-    editor = request.POST.get('editor', '')
-    alpha_threshold = request.POST.get('alpha_threshold', '0.5')
-    top_sgrnas = request.POST.get('top_sgrnas', '')
-    duplicate_mode = normalize_duplicate_mode(request.POST.get('duplicate_mode', 'best'))
-    pam_type = request.POST.get('pam_type', 'NGG')
-
-    score_filter_mode, display_score_cutoff = resolve_score_filter(
-        request.POST, default_cutoff=alpha_threshold
-    )
-    window_min, window_max = parse_editing_window(request.POST)
-    selected_columns = resolve_selected_columns(request.POST, editor)
-    editor_display = 'ABE & CBE' if editor == 'BOTH' else editor
-
-    try:
-        analysis_result = _normalize_analysis_result(run_analysis(
-            uniprot_id=uniprot_id,
-            editor=editor,
-            alpha_threshold=alpha_threshold,
-            top_sgrnas=top_sgrnas,
-            window_min=window_min,
-            window_max=window_max,
-            pam_type=pam_type,
-        ))
-        full_rows = analysis_result['guide_rows']
-        no_guide_full = analysis_result['no_guide_positions']
-        form_data = build_form_data(
-            uniprot_id=uniprot_id,
-            editor=editor,
-            editor_display=editor_display,
-            alpha_threshold=alpha_threshold,
-            top_sgrnas=top_sgrnas,
-            gene_name=analysis_result.get('gene_symbol') or uniprot_id,
-            gene_symbol=analysis_result.get('gene_symbol') or '',
-            uniprot_accession=analysis_result.get('uniprot_accession') or uniprot_id,
-            protein_length=analysis_result.get('protein_length') or 0,
-            transcript_id=analysis_result.get('transcript_id') or '',
-            selected_columns=selected_columns,
-            score_filter_mode=score_filter_mode,
-            display_score_cutoff=display_score_cutoff,
-            filter_threshold='true' if score_filter_mode == 'above' else 'false',
-            window_min=window_min,
-            window_max=window_max,
-            duplicate_mode=duplicate_mode,
-            pam_type=pam_type,
-            cadd_warning=analysis_result.get('cadd_warning'),
+    # Legacy synchronous POST — redirect into async flow
+    status = get_status(session_key_from_request(request))
+    if status.get('status') == 'done':
+        rendered = _results_from_cache(request)
+        if rendered is not None:
+            return rendered
+        return redirect('results')
+    if status.get('status') == 'running':
+        return render(request, 'designer/loading.html')
+    if status.get('status') == 'error':
+        return render(
+            request,
+            'designer/error.html',
+            {
+                'error': status.get('error') or 'Analysis failed.',
+                'error_type': 'user',
+            },
         )
-        result_rows = _rows_for_display(full_rows, form_data, post=request.POST)
-        no_guide_display = _no_guide_for_display(no_guide_full, form_data, post=request.POST)
-
-        return _render_results(
-            request, result_rows, full_rows, form_data,
-            no_guide_full=no_guide_full,
-            no_guide_display=no_guide_display,
-        )
-
-    except UserInputError as e:
-        return render(request, 'designer/error.html', {'error': str(e), 'error_type': 'user'})
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return render(request, 'designer/error.html', {'error': str(e), 'error_type': 'server'})
+    form = _form_from_post(request.POST)
+    start_analysis(session_key_from_request(request), form)
+    return render(request, 'designer/loading.html')
 
 
 def apply_threshold_filter(rows, form_data):
@@ -672,7 +808,13 @@ def download_excel(request):
                 value = ', '.join(str(x) for x in value)
 
             if data_key in OUTCOME_LIST_KEYS and isinstance(value, list):
-                value = '\n'.join(value)
+                parts = []
+                for item in value:
+                    if isinstance(item, dict):
+                        parts.append(item.get('text') or '')
+                    else:
+                        parts.append(str(item))
+                value = '\n'.join(parts)
 
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
 
@@ -747,7 +889,13 @@ def download_csv(request):
                     value = f'pos {value}'
 
             if data_key in OUTCOME_LIST_KEYS and isinstance(value, list):
-                value = ' | '.join(value)
+                parts = []
+                for item in value:
+                    if isinstance(item, dict):
+                        parts.append(item.get('text') or '')
+                    else:
+                        parts.append(str(item))
+                value = ' | '.join(parts)
 
             csv_row.append(value)
 
@@ -758,7 +906,12 @@ def download_csv(request):
 
 def _guide_positions_from_rows(rows) -> list[int]:
     """Unique amino-acid positions with a guide in the visible results table."""
-    positions = set()
+    return sorted(_guide_am_scores_from_rows(rows).keys())
+
+
+def _guide_am_scores_from_rows(rows) -> dict[int, float]:
+    """Map protein position → max AlphaMissense score among visible guide rows."""
+    scores: dict[int, float] = {}
     for row in rows or []:
         if not row.get('sgrna_seq'):
             continue
@@ -766,10 +919,22 @@ def _guide_positions_from_rows(rows) -> list[int]:
         if pos is None:
             continue
         try:
-            positions.add(int(pos))
+            pos_i = int(pos)
         except (TypeError, ValueError):
             continue
-    return sorted(positions)
+        am = row.get('alpha_score')
+        if am is None:
+            scores.setdefault(pos_i, 0.02)
+            continue
+        try:
+            am_f = float(am)
+        except (TypeError, ValueError):
+            scores.setdefault(pos_i, 0.02)
+            continue
+        prev = scores.get(pos_i)
+        if prev is None or am_f > prev:
+            scores[pos_i] = am_f
+    return scores
 
 
 def screen_plot_status(request):
@@ -856,7 +1021,9 @@ def screen_plot_overview(request):
         gene=gene,
         uniprot_accession=accession,
     )
-    guide_positions = _guide_positions_from_rows(get_filtered_rows(request))
+    filtered_rows = get_filtered_rows(request)
+    guide_am_scores = _guide_am_scores_from_rows(filtered_rows)
+    guide_positions = sorted(guide_am_scores.keys())
     store = get_screen_data_store()
 
     # Prefer HGNC symbol for ClinVar; fall back to plot label when it looks like a gene.
@@ -894,6 +1061,7 @@ def screen_plot_overview(request):
         fig = build_overview_figure(
             gene,
             guide_positions=guide_positions,
+            guide_scores=guide_am_scores,
             store=store,
             protein_length=protein_length,
             domain_layout=domain_layout,

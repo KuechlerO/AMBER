@@ -238,5 +238,15 @@ CACHES = {
 
 SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'
 
+# Precomputed proteome guide shards (see precomputation_scripts/README.md)
+PRECOMPUTED_GUIDES_DIR = Path(
+    os.getenv('PRECOMPUTED_GUIDES_DIR', str(BASE_DIR / 'data' / 'precomputed_guides'))
+)
+PRECOMPUTED_GUIDES_DISABLE = os.getenv('PRECOMPUTED_GUIDES_DISABLE', '').lower() in (
+    '1',
+    'true',
+    'yes',
+)
+
 print(f"DEBUG: FORCE_SCRIPT_NAME is {FORCE_SCRIPT_NAME}")
 print(f"DEBUG: STATIC_URL is {STATIC_URL}")

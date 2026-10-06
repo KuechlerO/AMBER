@@ -21,9 +21,15 @@ from .score_thresholds import (
 # simple help functions
 # ===========================
 
-def _http_get(url, *, headers=None, params=None, timeout=None, retries=None):
+def _ensembl_retryable_status(status_code: int) -> bool:
+    """True for transient Ensembl/proxy failures worth retrying."""
+    return status_code == 429 or status_code >= 500
+
+
+def _http_get(url, *, headers=None, params=None, timeout=None, retries=None, sleeper=None):
     """
     GET with retries for flaky upstreams (Ensembl via institutional proxy).
+    Retries timeouts/connection errors and transient HTTP 429 / 5xx responses.
     CDS fetches often need >20s under load.
     """
     timeout = timeout if timeout is not None else int(
@@ -32,18 +38,52 @@ def _http_get(url, *, headers=None, params=None, timeout=None, retries=None):
     retries = retries if retries is not None else int(
         __import__('os').environ.get('ENSEMBL_HTTP_RETRIES', '3')
     )
+    sleep = sleeper or time.sleep
     last_exc: Exception | None = None
-    for attempt in range(max(1, retries)):
+    last_response = None
+    attempts = max(1, retries)
+    for attempt in range(attempts):
         try:
             r = requests.get(url, headers=headers, params=params, timeout=timeout)
+            last_response = r
+            if _ensembl_retryable_status(r.status_code) and attempt + 1 < attempts:
+                sleep(1.5 * (attempt + 1))
+                continue
             return r
         except (requests.Timeout, requests.ConnectionError) as exc:
             last_exc = exc
-            if attempt + 1 >= retries:
+            if attempt + 1 >= attempts:
                 break
-            time.sleep(1.5 * (attempt + 1))
-    assert last_exc is not None
-    raise last_exc
+            sleep(1.5 * (attempt + 1))
+    if last_exc is not None:
+        raise last_exc
+    assert last_response is not None
+    return last_response
+
+
+def _transcript_id_variants(transcript_id: str) -> list[str]:
+    """Bare ENST plus optional versioned id from Ensembl lookup."""
+    bare = str(transcript_id or '').split('.')[0].strip()
+    if not bare:
+        return []
+    variants = [bare]
+    try:
+        lookup = _http_get(
+            f'https://rest.ensembl.org/lookup/id/{bare}',
+            headers={'Content-Type': 'application/json'},
+            timeout=30,
+            retries=2,
+        )
+        if lookup.status_code == 200:
+            payload = lookup.json() or {}
+            version = payload.get('version')
+            if version is not None:
+                versioned = f'{bare}.{int(version)}'
+                if versioned not in variants:
+                    variants.append(versioned)
+    except (requests.RequestException, TypeError, ValueError):
+        pass
+    return variants
 
 
 # ---------------------------
@@ -241,8 +281,8 @@ def ensembl_to_uniprot(ensembl_id: str) -> str | None:
 # ---------------------------
 # UniProtID -> AlpaMissense results
 # ---------------------------
-def get_alphamissense_from_db(uniprot_nr, patho_threshold):
-
+def get_alphamissense_from_db(uniprot_nr, patho_threshold=0.0):
+    """Load AlphaMissense rows for an accession, optionally filtered by score ≥ threshold."""
     results = Alpha_missense.objects.using('legacy_db').filter(
         uniprot_id=uniprot_nr
     ).values_list('protein_variant', 'am_pathogenicity')
@@ -252,10 +292,22 @@ def get_alphamissense_from_db(uniprot_nr, patho_threshold):
         columns=['protein_variant', 'am_pathogenicity']
     )
 
+    if df.empty:
+        return df
+
     df[['a.a.1', 'position', 'a.a.2']] = df['protein_variant'].str.extract(r'([A-Z])(\d+)([A-Z])')
     df = df.rename(columns={'am_pathogenicity': 'pathogenicity score'})
+    df['position'] = pd.to_numeric(df['position'], errors='coerce')
+    df['pathogenicity score'] = pd.to_numeric(df['pathogenicity score'], errors='coerce')
 
-    return df
+    try:
+        thr = float(patho_threshold) if patho_threshold is not None else 0.0
+    except (TypeError, ValueError):
+        thr = 0.0
+    if thr > 0:
+        df = df[df['pathogenicity score'] >= thr].copy()
+
+    return df.reset_index(drop=True)
 
 # ===========================
 #  Exon/Intron filtering
@@ -309,11 +361,45 @@ def parse_cds_mappings(mappings):
 
 
 def get_exon_boundaries(transcript_id, cds_length):
-    url = f'https://rest.ensembl.org/map/cds/{transcript_id}/1..{cds_length}'
-    r = _http_get(url, headers={'Content-Type': 'application/json'}, timeout=60)
-    r.raise_for_status()
-    data = r.json()
-    return parse_cds_mappings(data.get('mappings', []))
+    """Map CDS coordinates to genomic exons via Ensembl /map/cds.
+
+    Retries transient 5xx/429 responses and falls back to a versioned ENST id
+    when the bare id fails (common with proxy/Ensembl flakiness).
+    """
+    try:
+        length = int(cds_length)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f'Invalid CDS length for exon mapping: {cds_length!r}') from exc
+    if length <= 0:
+        raise ValueError(f'Invalid CDS length for exon mapping: {length}')
+
+    last_status = None
+    last_url = None
+    for tid in _transcript_id_variants(transcript_id):
+        url = f'https://rest.ensembl.org/map/cds/{tid}/1..{length}'
+        last_url = url
+        try:
+            r = _http_get(url, headers={'Content-Type': 'application/json'}, timeout=60)
+        except requests.RequestException as exc:
+            raise ValueError(
+                'Could not reach Ensembl to map CDS exons '
+                f'({tid}, 1..{length}). {exc}. Please try again in a minute.'
+            ) from exc
+        last_status = r.status_code
+        if r.status_code == 200:
+            data = r.json() if r.content else {}
+            return parse_cds_mappings((data or {}).get('mappings', []))
+        # Non-retryable client errors (we already exhausted retries for 5xx/429)
+        if 400 <= r.status_code < 500 and r.status_code != 429:
+            break
+
+    status_bit = f'HTTP {last_status}' if last_status is not None else 'no response'
+    raise ValueError(
+        'Could not map CDS exons via Ensembl for '
+        f'{transcript_id} (1..{length}; {status_bit}'
+        + (f' for {last_url}' if last_url else '')
+        + '). Ensembl may be temporarily unavailable or rate-limited — please try again in a minute.'
+    )
 
 
 def cds_index_to_genomic(cds_pos, genomic_blocks):
@@ -878,18 +964,27 @@ def _list_or_empty(value):
     return cleaned if isinstance(cleaned, list) else []
 
 
-def _format_score_line(codon, aa, score, *, digits=3, star=False):
+def _format_score_line(codon, aa, score, *, digits=3, significant=False):
+    """Return {text, significant} for table display (no * — genetics uses * for stops)."""
     if score is None:
-        return f"{codon}({aa})"
-    marker = '*' if star else ''
-    return f"{codon}({aa})[{score:.{digits}f}]{marker}"
+        text = f"{codon}({aa})"
+    else:
+        text = f"{codon}({aa})[{score:.{digits}f}]"
+    return {'text': text, 'significant': bool(significant)}
 
 
-def finalize_guide_scores(rows, score_map):
-    """Attach CADD to each outcome and build per-guide lists + max/avg scalars."""
+def finalize_guide_scores(rows, score_map, *, keep_outcome_details=False):
+    """Attach CADD to each outcome and build per-guide lists + max/avg scalars.
+
+    When keep_outcome_details is True, leave `outcome_details` (with snvs) on each
+    row so CADD can be applied later without re-running guide design.
+    """
     for row in rows:
         details = []
-        for item in row.pop('_outcome_details', None) or []:
+        raw_details = row.pop('_outcome_details', None)
+        if raw_details is None:
+            raw_details = row.get('outcome_details')
+        for item in raw_details or []:
             details.append(dict(item))
         attach_cadd_to_outcomes(details, score_map)
 
@@ -911,21 +1006,21 @@ def finalize_guide_scores(rows, score_map):
         row['outcomes'] = [
             _format_score_line(
                 d.get('codon'), d.get('aa'), d.get('score'),
-                digits=3, star=am_likely_pathogenic(d.get('score')),
+                digits=3, significant=am_likely_pathogenic(d.get('score')),
             )
             for d in details
         ]
         row['esm1b_outcomes'] = [
             _format_score_line(
                 d.get('codon'), d.get('aa'), d.get('esm1b'),
-                digits=3, star=esm1b_damaging(d.get('esm1b')),
+                digits=3, significant=esm1b_damaging(d.get('esm1b')),
             )
             for d in details
         ]
         row['cadd_outcomes'] = [
             _format_score_line(
                 d.get('codon'), d.get('aa'), d.get('cadd'),
-                digits=2, star=cadd_significant(d.get('cadd')),
+                digits=2, significant=cadd_significant(d.get('cadd')),
             )
             for d in details
         ]
@@ -948,7 +1043,26 @@ def finalize_guide_scores(rows, score_map):
                 best_cadd = cadd
                 max_cadd_snvs = detail.get('snvs') or []
         row['cadd_raw'] = cadd_raw_for_best(max_cadd_snvs, score_map)
+        if keep_outcome_details:
+            row['outcome_details'] = details
+        else:
+            row.pop('outcome_details', None)
     return rows
+
+
+def enrich_guide_rows_with_cadd(rows):
+    """Fetch CADD for stored outcome SNVs and refresh CADD fields on guide rows."""
+    genomic_snvs = []
+    for row in rows:
+        details = row.get('outcome_details') or row.get('_outcome_details') or []
+        for detail in details:
+            genomic_snvs.extend(detail.get('snvs') or [])
+            # Ensure finalize reads outcome_details
+        if 'outcome_details' in row and '_outcome_details' not in row:
+            row['_outcome_details'] = row['outcome_details']
+    cadd_map, cadd_warning = fetch_cadd_scores(genomic_snvs)
+    finalize_guide_scores(rows, cadd_map, keep_outcome_details=True)
+    return rows, cadd_warning
 
 
 def flatten_candidate_dataframe(results_df, editor_mode, top_sgrnas):
@@ -1006,12 +1120,44 @@ def flatten_candidate_dataframe(results_df, editor_mode, top_sgrnas):
 # ===========================
 # run whole pipeline
 # ===========================
-def run_pipeline(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, window_max, pam_type='NGG'):
+def run_pipeline(
+    uniprot_id,
+    editor,
+    alpha_threshold,
+    top_sgrnas,
+    window_min,
+    window_max,
+    pam_type='NGG',
+    *,
+    include_cadd=False,
+):
+    """Design guides. CADD is deferred by default (include_cadd=False) for faster first paint."""
+
+    from .precomputed_guides import try_load_precomputed_guides
+
+    input_was_ensembl = uniprot_id.startswith('ENST')
+    lookup_id = uniprot_id
+    if input_was_ensembl:
+        mapped = ensembl_to_uniprot(uniprot_id)
+        if mapped:
+            lookup_id = mapped
+
+    precomputed = try_load_precomputed_guides(
+        lookup_id,
+        editor,
+        alpha_threshold,
+        top_sgrnas,
+        window_min,
+        window_max,
+        pam_type,
+        include_cadd=include_cadd,
+    )
+    if precomputed is not None:
+        return precomputed
 
     transcript_id = ''
     cds = ''
     gene_symbol = None
-    input_was_ensembl = uniprot_id.startswith('ENST')
 
     if input_was_ensembl:
         transcript_id = uniprot_id
@@ -1030,10 +1176,17 @@ def run_pipeline(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, wi
     threshold = float(alpha_threshold)
     patho_df = get_alphamissense_from_db(uniprot_id, threshold)
     if patho_df is None or patho_df.empty:
+        # Distinguish "no AM at all" vs "nothing above threshold"
+        raw_df = get_alphamissense_from_db(uniprot_id, 0.0)
+        if raw_df is None or raw_df.empty:
+            raise ValueError(
+                f'No AlphaMissense scores found for {uniprot_id}. '
+                'AMBER needs AlphaMissense coverage to design and rank guides. '
+                'Try a Swiss-Prot accession for this gene (use Look up gene on the home page).'
+            )
         raise ValueError(
-            f'No AlphaMissense scores found for {uniprot_id}. '
-            'AMBER needs AlphaMissense coverage to design and rank guides. '
-            'Try a Swiss-Prot accession for this gene (use Look up gene on the home page).'
+            f'No AlphaMissense variants for {uniprot_id} meet the score threshold '
+            f'({threshold}). Lower the AlphaMissense threshold on the home page and try again.'
         )
     exon_data = get_exon_boundaries(transcript_id, len(cds))
 
@@ -1067,12 +1220,22 @@ def run_pipeline(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, wi
         and pd.notna(r.get('alpha_score'))
     ]
 
-    genomic_snvs = []
-    for row in all_rows:
-        for detail in row.get('_outcome_details') or []:
-            genomic_snvs.extend(detail.get('snvs') or [])
-    cadd_map, cadd_warning = fetch_cadd_scores(genomic_snvs)
-    finalize_guide_scores(all_rows, cadd_map)
+    cadd_warning = None
+    cadd_status = 'skipped'
+    if include_cadd:
+        genomic_snvs = []
+        for row in all_rows:
+            for detail in row.get('_outcome_details') or []:
+                genomic_snvs.extend(detail.get('snvs') or [])
+        cadd_map, cadd_warning = fetch_cadd_scores(genomic_snvs)
+        finalize_guide_scores(all_rows, cadd_map, keep_outcome_details=True)
+        cadd_status = 'done'
+    else:
+        finalize_guide_scores(all_rows, {}, keep_outcome_details=True)
+        cadd_warning = (
+            'CADD scores are loading in the background and will appear when ready.'
+        )
+        cadd_status = 'pending'
 
     all_rows.sort(
         key=lambda r: (
@@ -1089,4 +1252,5 @@ def run_pipeline(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, wi
         'gene_symbol': gene_symbol or '',
         'transcript_id': transcript_id,
         'cadd_warning': cadd_warning,
+        'cadd_status': cadd_status,
     }

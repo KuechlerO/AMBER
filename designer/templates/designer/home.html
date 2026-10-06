@@ -7,26 +7,16 @@
 <div class="card page-card intro-card">
     <h2>Design of Base-Editing guide RNAs</h2>
     <p>
-        The further analysis will identify biologically relevant amino acid substitutions
-        and corresponding base-editing-compatible guide RNAs for your chosen protein.
+        AMBER designs base-editing guide RNAs for a chosen protein and ranks
+        codon outcomes with <strong>AlphaMissense</strong>. Results also report
+        <strong>ESM1b</strong> LLR and <strong>CADD</strong> PHRED scores
+        (highlighted when they pass author cutoffs).
     </p>
     <p>
-        All amino acid substitutions will be evalutated and ranked using <strong>AlphaMissense</strong>.
-        Results also list <strong>ESM1b</strong> log-likelihood ratios and <strong>CADD</strong> PHRED
-        scores for every codon outcome. <strong>max ESM1b LLR</strong> is the most damaging
-        (most negative) value; <strong>max CADD PHRED</strong> is the highest PHRED.
-        On the results page, <strong>*</strong> marks author cutoffs
-        (AlphaMissense ≥ {{ am_likely_pathogenic_threshold }},
-        ESM1b LLR ≤ {{ esm1b_damaging_threshold }},
-        CADD PHRED ≥ {{ cadd_significant_threshold }}) — display only, separate from the
-        AlphaMissense filter slider below.
-    </p>
-    <p>
-        As editors, <strong>ABE</strong> and <strong>CBE</strong> are both supported.
-        As PAM sequences, <strong>NGG</strong>, <strong>NG</strong> and <strong>NAG</strong> can be chosen.
-    </p>
-    <p>
-        Guide RNAs that target multiple positions can be filtered, deduplicated, or shown in full (see options below).
+        Supports <strong>ABE</strong> / <strong>CBE</strong> and PAMs
+        <strong>NGG</strong>, <strong>NG</strong>, and <strong>NAG</strong>.
+        Multi-site guides can be filtered or grouped; guides that span exon–intron
+        boundaries are excluded.
     </p>
     <p>
         The Guide RNAs that span exon-intron boundaries are automatically excluded, as these would not function correctly in the processed mRNA.
@@ -226,7 +216,7 @@
 
         <!-- Run analysis - zentriert -->
         <div class="form-actions" style="display: flex; justify-content: center; margin-top: 2rem;">
-            <button type="submit" class="btn" style="padding: 1.1rem 3rem; font-size: 1.1rem;" onclick="this.innerText='Running analysis...';">
+            <button type="submit" class="btn" style="padding: 1.1rem 3rem; font-size: 1.1rem;">
                 Run analysis
             </button>
         </div>
@@ -291,6 +281,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
     minInput.addEventListener("input", validate);
     maxInput.addEventListener("input", validate);
+
+    const alphaThreshold = document.getElementById("alpha_threshold");
+    const alphaSlider = document.getElementById("alpha_slider");
+    const scoreModeRadios = document.querySelectorAll('input[name="score_filter_mode"]');
+    scoreModeRadios.forEach(function (radio) {
+        radio.addEventListener("change", function () {
+            if (radio.value === "all" && radio.checked && alphaThreshold && alphaSlider) {
+                alphaThreshold.value = "0";
+                alphaSlider.value = "0";
+            }
+        });
+    });
 });
 </script>
 {% endblock %}

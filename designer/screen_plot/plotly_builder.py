@@ -137,6 +137,30 @@ def _guide_colors_and_hover(
     return colors, hovers
 
 
+def _set_track_yaxis(
+    fig: go.Figure,
+    row: int,
+    *,
+    title: str,
+    showticklabels: bool = False,
+) -> None:
+    """Shared y-axis chrome for overview protein-map tracks (range [0, 1])."""
+    kwargs = dict(
+        title_text=title,
+        title_font=dict(size=11),
+        range=[0, 1],
+        showticklabels=showticklabels,
+        visible=True,
+        zeroline=False,
+        showgrid=False,
+        row=row,
+        col=1,
+    )
+    if showticklabels:
+        kwargs.update(tickvals=[0, 0.5, 1], tickfont=dict(size=9))
+    fig.update_yaxes(**kwargs)
+
+
 def _add_domain_track(
     fig: go.Figure,
     domain_layout: list[dict],
@@ -146,7 +170,7 @@ def _add_domain_track(
     lfc_vmin: float = -0.5,
     lfc_vmax: float = 0.5,
 ) -> None:
-    fig.update_yaxes(range=[0, 1], visible=False, row=domain_row, col=1)
+    _set_track_yaxis(fig, domain_row, title='Domains')
     fig.update_xaxes(range=[plt_range[0] - 1, plt_range[1] + 1], row=domain_row, col=1)
 
     if not domain_layout:
@@ -177,10 +201,12 @@ def _add_domain_track(
         labels.append(d['name'])
         hover.append(f"{d['name']}<br>{start}–{end}")
 
+    # Vertically centered band: base 0.25 + height 0.5 → spans 0.25–0.75.
     fig.add_trace(
         go.Bar(
             x=centers,
             y=[0.5] * len(centers),
+            base=[0.25] * len(centers),
             width=widths,
             marker=dict(color=colors, line=dict(color='black', width=0.5)),
             text=labels,
@@ -191,16 +217,6 @@ def _add_domain_track(
             hoverinfo='text',
             showlegend=False,
         ),
-        row=domain_row,
-        col=1,
-    )
-    fig.add_shape(
-        type='line',
-        x0=0,
-        x1=pro_len,
-        y0=0.5,
-        y1=0.5,
-        line=dict(color='black', width=2),
         row=domain_row,
         col=1,
     )
@@ -263,19 +279,8 @@ def _add_clinvar_track(
     *,
     empty_message: str | None = None,
 ) -> None:
-    fig.update_yaxes(range=[-0.15, 1.05], visible=False, showticklabels=False, row=clinvar_row, col=1)
+    _set_track_yaxis(fig, clinvar_row, title='# entries')
     fig.update_xaxes(range=[plt_range[0] - 1, plt_range[1] + 1], row=clinvar_row, col=1)
-
-    fig.add_shape(
-        type='line',
-        x0=0,
-        x1=pro_len,
-        y0=0.0,
-        y1=0.0,
-        line=dict(color='black', width=1.5),
-        row=clinvar_row,
-        col=1,
-    )
 
     variants = list(clinvar_variants or [])
     if not variants:
@@ -303,11 +308,12 @@ def _add_clinvar_track(
         )
         return
 
+    lane_height = 1.0 / max(_CLINVAR_MAX_LANES, 1)
     xs, ys, colors, hovers, customdata = [], [], [], [], []
     for variant, lane, overflow in assigned:
         residue = int(variant['residue'])
-        # Stack upward from the backbone.
-        y = 0.12 + lane * (0.85 / max(_CLINVAR_MAX_LANES, 1))
+        # Grounded at bottom; lane stacking only — not pathogenicity.
+        y = lane_height * (lane + 0.5)
         xs.append(residue)
         ys.append(y)
         colors.append(_clinvar_color(variant.get('classification')))
@@ -352,6 +358,26 @@ def _add_clinvar_track(
     )
 
 
+def _guide_bar_heights(
+    guide_positions: list[int],
+    guide_scores: dict[int, float] | None,
+) -> list[float]:
+    """Bar height = max AM at position when scores provided; else fixed 0.5."""
+    if guide_scores is None:
+        return [0.5] * len(guide_positions)
+    heights = []
+    for pos in guide_positions:
+        raw = guide_scores.get(pos)
+        if raw is None:
+            heights.append(0.02)
+            continue
+        try:
+            heights.append(max(0.02, min(1.0, float(raw))))
+        except (TypeError, ValueError):
+            heights.append(0.02)
+    return heights
+
+
 def _add_guide_track(
     fig: go.Figure,
     guide_positions: list[int],
@@ -359,8 +385,11 @@ def _add_guide_track(
     plt_range: tuple[int, int],
     store: ScreenDataStore | None,
     gene: str,
+    *,
+    guide_scores: dict[int, float] | None = None,
+    y_axis_title: str = 'AlphaMissense',
 ) -> None:
-    fig.update_yaxes(range=[0, 1], visible=False, showticklabels=False, row=guide_row, col=1)
+    _set_track_yaxis(fig, guide_row, title=y_axis_title, showticklabels=True)
     fig.update_xaxes(range=[plt_range[0] - 1, plt_range[1] + 1], row=guide_row, col=1)
 
     if not guide_positions:
@@ -376,12 +405,22 @@ def _add_guide_track(
         return
 
     colors, hovers = _guide_colors_and_hover(store, gene, guide_positions)
+    heights = _guide_bar_heights(guide_positions, guide_scores)
+    if guide_scores is not None:
+        enriched = []
+        for pos, hover, height in zip(guide_positions, hovers, heights):
+            enriched.append(
+                f'{hover}<br>Max AM {height:.3f}<br>Click for guide details'
+            )
+        hovers = enriched
+    customdata = [{'type': 'guide', 'position': int(pos)} for pos in guide_positions]
     fig.add_trace(
         go.Bar(
             x=guide_positions,
-            y=[0.5] * len(guide_positions),
+            y=heights,
             width=[0.8] * len(guide_positions),
             marker=dict(color=colors),
+            customdata=customdata,
             hovertext=hovers,
             hoverinfo='text',
             showlegend=False,
@@ -474,6 +513,7 @@ def build_overview_figure(
     domain_layout: list[dict] | None = None,
     clinvar_variants: list[dict] | None = None,
     clinvar_empty_message: str | None = None,
+    guide_scores: dict[int, float] | None = None,
 ) -> go.Figure:
     """Domains + ClinVar + AMBER guide tracks (shown below the results table)."""
     store = store or ScreenDataStore.get()
@@ -494,6 +534,8 @@ def build_overview_figure(
 
     plt_range = (0, pro_len)
     guide_positions = sorted({int(p) for p in (guide_positions or []) if p is not None})
+    if guide_scores:
+        guide_positions = sorted(set(guide_positions) | {int(p) for p in guide_scores})
 
     color_store = store if store.is_ready() else None
     guide_title = f'AMBER guides ({len(guide_positions)} positions)'
@@ -518,7 +560,16 @@ def build_overview_figure(
         pro_len,
         empty_message=clinvar_empty_message,
     )
-    _add_guide_track(fig, guide_positions, 3, plt_range, color_store, gene)
+    _add_guide_track(
+        fig,
+        guide_positions,
+        3,
+        plt_range,
+        color_store,
+        gene,
+        guide_scores=guide_scores,
+        y_axis_title='AM score',
+    )
 
     # Title under the guide track so it does not overlap the ClinVar subplot above.
     fig.update_xaxes(title_text=guide_title, title_font=dict(size=12), row=3, col=1)
@@ -526,8 +577,9 @@ def build_overview_figure(
     fig.update_layout(
         title=f'{gene} — protein map',
         height=380,
+        autosize=True,
         showlegend=False,
-        margin=dict(l=60, r=20, t=50, b=55),
+        margin=dict(l=70, r=20, t=50, b=55),
     )
     return fig
 

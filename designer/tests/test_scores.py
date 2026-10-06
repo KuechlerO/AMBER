@@ -225,16 +225,28 @@ class FlattenAndJoinTest(SimpleTestCase):
         self.assertTrue(rows[0]['alpha_score_significant'])
         self.assertTrue(rows[0]['esm1b_score_significant'])
         self.assertTrue(rows[0]['cadd_phred_significant'])
-        self.assertTrue(any('GAA(E)[0.900]*' in line for line in rows[0]['outcomes']))
-        self.assertFalse(any('GGA(G)[0.400]*' in line for line in rows[0]['outcomes']))
-        self.assertTrue(any('GAA(E)[-8.000]*' in line for line in rows[0]['esm1b_outcomes']))
-        self.assertFalse(any('GGA(G)[-1.000]*' in line for line in rows[0]['esm1b_outcomes']))
-        self.assertTrue(any('GAA(E)[20.00]*' in line for line in rows[0]['cadd_outcomes']))
-        self.assertFalse(any('GGA(G)[10.00]*' in line for line in rows[0]['cadd_outcomes']))
+        self.assertTrue(any(
+            o['text'] == 'GAA(E)[0.900]' and o['significant'] for o in rows[0]['outcomes']
+        ))
+        self.assertTrue(any(
+            o['text'] == 'GGA(G)[0.400]' and not o['significant'] for o in rows[0]['outcomes']
+        ))
+        self.assertTrue(any(
+            o['text'] == 'GAA(E)[-8.000]' and o['significant'] for o in rows[0]['esm1b_outcomes']
+        ))
+        self.assertTrue(any(
+            o['text'] == 'GGA(G)[-1.000]' and not o['significant'] for o in rows[0]['esm1b_outcomes']
+        ))
+        self.assertTrue(any(
+            o['text'] == 'GAA(E)[20.00]' and o['significant'] for o in rows[0]['cadd_outcomes']
+        ))
+        self.assertTrue(any(
+            o['text'] == 'GGA(G)[10.00]' and not o['significant'] for o in rows[0]['cadd_outcomes']
+        ))
         self.assertNotIn('_outcome_details', rows[0])
 
-    def test_author_cutoff_stars_and_scalar_flags(self):
-        """Outcomes just above/below each author cutoff get or omit *."""
+    def test_author_cutoff_highlight_and_scalar_flags(self):
+        """Outcomes just above/below each author cutoff set significant without *."""
         rows = [{
             'mut_aa': 'A',
             'alpha_score': 0.563,
@@ -256,12 +268,13 @@ class FlattenAndJoinTest(SimpleTestCase):
         am_lines = rows[0]['outcomes']
         esm_lines = rows[0]['esm1b_outcomes']
         cadd_lines = rows[0]['cadd_outcomes']
-        self.assertTrue(any(line.endswith('*') and '0.564' in line for line in am_lines))
-        self.assertTrue(any(not line.endswith('*') and '0.563' in line for line in am_lines))
-        self.assertTrue(any(line.endswith('*') and '-7.500' in line for line in esm_lines))
-        self.assertTrue(any(not line.endswith('*') and '-7.490' in line for line in esm_lines))
-        self.assertTrue(any(line.endswith('*') and '20.00' in line for line in cadd_lines))
-        self.assertTrue(any(not line.endswith('*') and '19.99' in line for line in cadd_lines))
+        self.assertTrue(any(o['significant'] and '0.564' in o['text'] for o in am_lines))
+        self.assertTrue(any(not o['significant'] and '0.563' in o['text'] for o in am_lines))
+        self.assertTrue(any(o['significant'] and '-7.500' in o['text'] for o in esm_lines))
+        self.assertTrue(any(not o['significant'] and '-7.490' in o['text'] for o in esm_lines))
+        self.assertTrue(any(o['significant'] and '20.00' in o['text'] for o in cadd_lines))
+        self.assertTrue(any(not o['significant'] and '19.99' in o['text'] for o in cadd_lines))
+        self.assertTrue(all('*' not in o['text'] for o in am_lines + esm_lines + cadd_lines))
         self.assertTrue(rows[0]['alpha_score_significant'])
         self.assertTrue(rows[0]['esm1b_score_significant'])
         self.assertTrue(rows[0]['cadd_phred_significant'])
@@ -280,9 +293,9 @@ class FlattenAndJoinTest(SimpleTestCase):
         self.assertFalse(below[0]['alpha_score_significant'])
         self.assertFalse(below[0]['esm1b_score_significant'])
         self.assertFalse(below[0]['cadd_phred_significant'])
-        self.assertEqual(below[0]['outcomes'], ['GGA(G)[0.500]'])
-        self.assertEqual(below[0]['esm1b_outcomes'], ['GGA(G)[-7.000]'])
-        self.assertEqual(below[0]['cadd_outcomes'], ['GGA(G)[15.00]'])
+        self.assertEqual(below[0]['outcomes'], [{'text': 'GGA(G)[0.500]', 'significant': False}])
+        self.assertEqual(below[0]['esm1b_outcomes'], [{'text': 'GGA(G)[-7.000]', 'significant': False}])
+        self.assertEqual(below[0]['cadd_outcomes'], [{'text': 'GGA(G)[15.00]', 'significant': False}])
 
     def test_cadd_uses_guide_outcomes_not_residue_best(self):
         rows = [{
@@ -297,7 +310,7 @@ class FlattenAndJoinTest(SimpleTestCase):
             ('2', 50, 'A', 'G'): {'phred': 12.5, 'raw': 0.3},
         })
         self.assertAlmostEqual(rows[0]['cadd_phred'], 12.5)
-        self.assertEqual(rows[0]['cadd_outcomes'], ['GGA(G)[12.50]'])
+        self.assertEqual(rows[0]['cadd_outcomes'], [{'text': 'GGA(G)[12.50]', 'significant': False}])
 
     def test_generate_candidates_attaches_esm_and_snvs(self):
         cds = ('N' * 16) + ('A' * 20) + 'AGG' + 'NN'

@@ -145,3 +145,86 @@ class PlotlyBuilderSmokeTest(TestCase):
         colors = guide_traces[0]['marker']['color']
         self.assertEqual(colors[0], '#22c55e')
         self.assertEqual(colors[1], '#3b82f6')
+
+    def test_overview_no_domain_or_clinvar_midlines(self):
+        variants = [{
+            'uid': '1',
+            'accession': 'VCV1',
+            'title': 'p.Leu2Val',
+            'protein_change': 'L2V',
+            'residue': 2,
+            'classification': 'Pathogenic',
+            'review_status': 'criteria provided',
+            'url': 'https://www.ncbi.nlm.nih.gov/clinvar/variation/1/',
+        }]
+        fig = build_overview_figure(
+            'TESTGENE',
+            guide_positions=[1],
+            store=self._mock_store(),
+            clinvar_variants=variants,
+            domain_layout=[{'name': 'D1', 'start': 0, 'end': 10, 'avg_lfc': None}],
+        )
+        payload = json.loads(fig.to_json())
+        shapes = payload['layout'].get('shapes') or []
+        self.assertFalse(any(
+            abs(float(s.get('y0', -1)) - 0.5) < 1e-9
+            and abs(float(s.get('y1', -1)) - 0.5) < 1e-9
+            for s in shapes
+        ))
+        self.assertFalse(any(
+            abs(float(s.get('y0', 1)) ) < 1e-9
+            and abs(float(s.get('y1', 1))) < 1e-9
+            for s in shapes
+        ))
+        domain_bars = [
+            t for t in payload['data']
+            if t.get('type') == 'bar' and t.get('base') is not None
+        ]
+        self.assertTrue(domain_bars)
+        self.assertEqual(domain_bars[0]['base'], [0.25])
+        self.assertEqual(domain_bars[0]['y'], [0.5])
+        scatter = [t for t in payload['data'] if t.get('type') == 'scatter']
+        self.assertEqual(len(scatter), 1)
+        self.assertTrue(all(y >= 0 for y in scatter[0]['y']))
+        self.assertAlmostEqual(scatter[0]['y'][0], 1.0 / 16)  # lane 0 mid of 8 lanes
+        for key in ('yaxis', 'yaxis1', 'yaxis2', 'yaxis3'):
+            axis = payload['layout'].get(key)
+            if not axis:
+                continue
+            yr = axis.get('range')
+            if yr:
+                self.assertEqual(yr, [0, 1])
+
+    def test_overview_guide_heights_from_am_scores(self):
+        fig = build_overview_figure(
+            'TESTGENE',
+            guide_positions=[1, 3],
+            guide_scores={1: 0.9, 3: 0.2},
+            store=self._mock_store(),
+        )
+        payload = json.loads(fig.to_json())
+        guide_traces = [
+            t for t in payload['data']
+            if t.get('type') == 'bar' and list(t.get('x', [])) == [1, 3]
+        ]
+        self.assertEqual(len(guide_traces), 1)
+        self.assertEqual(guide_traces[0]['y'], [0.9, 0.2])
+        custom = guide_traces[0].get('customdata') or []
+        self.assertEqual(custom[0]['type'], 'guide')
+        self.assertEqual(custom[0]['position'], 1)
+        yaxis3 = payload['layout'].get('yaxis3') or {}
+        y_title = yaxis3.get('title')
+        if isinstance(y_title, dict):
+            y_title = y_title.get('text', '')
+        self.assertIn('AM', y_title or '')
+        self.assertTrue(yaxis3.get('visible', True))
+        yaxis1 = payload['layout'].get('yaxis') or payload['layout'].get('yaxis1') or {}
+        y1_title = yaxis1.get('title')
+        if isinstance(y1_title, dict):
+            y1_title = y1_title.get('text', '')
+        self.assertIn('Domain', y1_title or '')
+        yaxis2 = payload['layout'].get('yaxis2') or {}
+        y2_title = yaxis2.get('title')
+        if isinstance(y2_title, dict):
+            y2_title = y2_title.get('text', '')
+        self.assertIn('entries', (y2_title or '').lower())

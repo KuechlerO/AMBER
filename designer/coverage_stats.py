@@ -158,9 +158,16 @@ def build_coverage_figure(stats: dict[str, Any]):
         )
 
     fig.update_layout(
+        title=dict(
+            text='Fraction of covered residue positions (%)',
+            font=dict(size=13, color='#4b5563'),
+            x=0,
+            xanchor='left',
+            pad=dict(t=2, b=4),
+        ),
         barmode='stack',
-        height=160,
-        margin=dict(l=8, r=8, t=8, b=56),
+        height=180,
+        margin=dict(l=8, r=8, t=40, b=56),
         showlegend=True,
         legend=dict(
             orientation='h',
@@ -171,7 +178,7 @@ def build_coverage_figure(stats: dict[str, Any]):
             bgcolor='rgba(0,0,0,0)',
         ),
         xaxis=dict(
-            title=dict(text='Fragment of covered positions (%)', font=dict(size=12, color='#4b5563')),
+            title=None,
             range=[0, 100],
             ticksuffix='%',
             fixedrange=True,

@@ -128,4 +128,7 @@ def run_analysis(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, wi
     except ValueError as e:
         raise UserInputError(str(e))
     except requests.RequestException as e:
-        raise UserInputError(f"Could not retrieve sequence data: {e}")
+        raise UserInputError(
+            'Could not retrieve sequence data from Ensembl '
+            f'({e}). The Ensembl service may be temporarily unavailable — please try again in a minute.'
+        )

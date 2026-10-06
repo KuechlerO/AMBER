@@ -15,7 +15,11 @@
         ESM1b LLR and CADD PHRED are listed for every codon outcome of that guide.
     </p>
     {% if form_data.cadd_warning %}
-    <p class="help-text" role="status"><strong>CADD:</strong> {{ form_data.cadd_warning }}</p>
+    <p id="cadd-status-msg" class="help-text" role="status"><strong>CADD:</strong> {{ form_data.cadd_warning }}</p>
+    {% elif form_data.cadd_status == 'pending' %}
+    <p id="cadd-status-msg" class="help-text" role="status"><strong>CADD:</strong> Scores are loading in the background and will appear when ready.</p>
+    {% else %}
+    <p id="cadd-status-msg" class="help-text" role="status" hidden></p>
     {% endif %}
 
     <div class="summary-box summary-box-bubbly">
@@ -60,12 +64,15 @@
 
     {% if coverage_stats %}
     <section class="coverage-summary-section" id="coverage-section">
-        <button type="button" class="toggle-btn section-toggle"
-                onclick="toggleResultsSection(this, 'coverage-panel', 'Show guide coverage', 'Hide guide coverage')"
-                aria-expanded="true" aria-controls="coverage-panel">
-            Hide guide coverage
-        </button>
-        <div id="coverage-panel" class="section-collapsible-panel">
+        <div class="section-header-row">
+            <h3 class="section-header-title">Guide Coverage</h3>
+            <button type="button" class="toggle-btn section-show-hide"
+                    onclick="toggleResultsSection(this, 'coverage-panel', 'Show', 'Hide')"
+                    aria-expanded="false" aria-controls="coverage-panel">
+                Show
+            </button>
+        </div>
+        <div id="coverage-panel" class="section-collapsible-panel" hidden>
         <div class="coverage-stats-list">
             <div class="coverage-stat-row">
                 <span class="coverage-stat-label">
@@ -144,11 +151,14 @@
     {% endif %}
 
     <section class="coverage-summary-section protein-map-section" id="protein-map-section">
-        <button type="button" class="toggle-btn section-toggle"
-                onclick="toggleResultsSection(this, 'protein-map-panel', 'Show protein map', 'Hide protein map')"
-                aria-expanded="true" aria-controls="protein-map-panel">
-            Hide protein map
-        </button>
+        <div class="section-header-row">
+            <h3 class="section-header-title">Protein map</h3>
+            <button type="button" class="toggle-btn section-show-hide"
+                    onclick="toggleResultsSection(this, 'protein-map-panel', 'Show', 'Hide')"
+                    aria-expanded="true" aria-controls="protein-map-panel">
+                Hide
+            </button>
+        </div>
         <div id="protein-map-panel" class="section-collapsible-panel">
             <p class="help-text">
                 UniProt domains, ClinVar germline variants (protein position), and AMBER guide positions from your <strong>current results table</strong>.
@@ -172,6 +182,8 @@
                 <span class="clinvar-swatch clinvar-likely-benign">Likely benign</span>
                 <span class="clinvar-swatch clinvar-benign">Benign</span>
                 <span class="clinvar-swatch clinvar-conflict">Conflicting</span>
+                — stacked height shows how many ClinVar entries map to that residue (not pathogenicity).
+                Guide bar height is the max AlphaMissense score at that residue (click for details).
             </p>
             <p id="screen-overview-status" class="help-text screen-plot-status-msg">Loading protein map…</p>
             <div id="screen-overview-chart" class="screen-overview-chart"></div>
@@ -188,16 +200,12 @@
         (score or column filters may hide partners).
     </p>
 
-    <div class="display-options" style="margin-top: 25px; margin-bottom: 25px;">
-        <div class="display-options-toolbar" role="group" aria-label="Display and download">
-            <button type="button" class="toggle-btn display-options-toggle" onclick="toggleDisplayOptions(this)">
-                Change display &amp; filters
-            </button>
-            <a class="btn" href="{% url 'download_excel' %}">Download Excel</a>
-            <a class="btn" href="#" onclick="downloadTableAsCSV(); return false;" style="cursor:pointer;">Download CSV</a>
-        </div>
-
-        <div id="display-options-panel" class="display-options-panel" hidden>
+    <dialog id="display-settings-modal" class="display-settings-modal">
+        <div class="display-settings-modal-inner">
+            <div class="display-settings-modal-header">
+                <h3 class="display-settings-modal-title">Pick columns</h3>
+                <button type="button" class="display-settings-modal-close" id="display-settings-close" aria-label="Close">&times;</button>
+            </div>
             <form id="display-settings-form" method="POST" action="{% url 'results' %}">
                 {% csrf_token %}
                 <input type="hidden" name="refresh_only" value="1">
@@ -210,38 +218,8 @@
                 <input type="hidden" name="editor" value="{{ form_data.editor }}">
                 <input type="hidden" name="duplicate_mode" value="{{ form_data.duplicate_mode }}">
                 <input type="hidden" name="pam_type" value="{{ form_data.pam_type }}">
-
-                <section class="display-options-section">
-                    <h4 class="display-options-heading">AlphaMissense score filter</h4>
-                    <div class="filter-inline">
-                        <label class="filter-radio">
-                            <input type="radio" name="score_filter_mode" value="all"
-                                   {% if form_data.score_filter_mode == 'all' %}checked{% endif %}>
-                            Show all variants
-                        </label>
-                        <label class="filter-radio">
-                            <input type="radio" name="score_filter_mode" value="above"
-                                   {% if form_data.score_filter_mode != 'all' and form_data.score_filter_mode != 'below' %}checked{% endif %}>
-                            Score ≥ cutoff
-                        </label>
-                        <label class="filter-radio">
-                            <input type="radio" name="score_filter_mode" value="below"
-                                   {% if form_data.score_filter_mode == 'below' %}checked{% endif %}>
-                            Score ≤ cutoff
-                        </label>
-                    </div>
-                    <div class="score-cutoff-row">
-                        <label for="display_score_cutoff">Cutoff value</label>
-                        <input type="number" id="display_score_cutoff" name="display_score_cutoff"
-                               class="score-cutoff-input"
-                               value="{{ form_data.display_score_cutoff|default:form_data.alpha_threshold }}"
-                               step="0.01" min="0" max="1">
-                    </div>
-                    <p class="help-text">
-                        Analysis threshold from home: {{ form_data.alpha_threshold }}.
-                        Pick a mode and cutoff, then apply (fast, no new analysis).
-                    </p>
-                </section>
+                <input type="hidden" name="score_filter_mode" value="{{ form_data.score_filter_mode|default:'above' }}">
+                <input type="hidden" name="display_score_cutoff" value="{{ form_data.display_score_cutoff|default:form_data.alpha_threshold }}">
 
                 <section class="display-options-section">
                     <div class="column-picker-header">
@@ -262,50 +240,100 @@
                             </label>
                         {% endfor %}
                     </div>
-                    <p class="help-text">Columns update instantly. Use "Apply display settings" to sync Excel export.</p>
+                    <p class="help-text">Columns update instantly. Use "Pick columns" to sync Excel export.</p>
                 </section>
 
                 <div class="display-options-footer">
                     <button type="submit" class="btn" id="apply-display-settings">
-                        Apply display settings
+                        Pick columns
                     </button>
                 </div>
-
             </form>
         </div>
-    </div>
+    </dialog>
 
-
-    <section class="results-main-split" aria-label="Guide table and structure">
+    <section class="results-main-split structure-collapsed" aria-label="Guide table and structure">
         <div class="results-table-pane">
-            <h3 class="results-subtitle results-pane-heading">Guide RNA candidates</h3>
+            <div class="results-pane-heading-row">
+                <h3 class="results-subtitle results-pane-heading">Guide RNA candidates</h3>
+                <div class="table-download-actions" role="group" aria-label="Downloads">
+                    <a class="table-download-btn" href="{% url 'download_excel' %}" title="Download Excel" aria-label="Download Excel">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h8M8 9h3"/></svg>
+                    </a>
+                    <a class="table-download-btn" href="#" onclick="downloadTableAsCSV(); return false;" title="Download CSV" aria-label="Download CSV">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg>
+                    </a>
+                </div>
+            </div>
+            <div class="table-client-filters" id="table-client-filters" aria-label="Table score filters">
+                <label>
+                    AM min
+                    <input type="number" id="filter-am-min" min="0" max="1" step="0.01" placeholder="—">
+                </label>
+                <label>
+                    ESM1b max LLR
+                    <input type="number" id="filter-esm-max" step="0.1" placeholder="—">
+                </label>
+                <label>
+                    CADD min PHRED
+                    <input type="number" id="filter-cadd-min" min="0" step="0.1" placeholder="—">
+                </label>
+                <label>
+                    ClinVar
+                    <select id="filter-clinvar">
+                        <option value="all">All</option>
+                        <option value="any">Any ClinVar</option>
+                        <option value="pathogenic">Pathogenic / LP</option>
+                        <option value="none">No ClinVar</option>
+                    </select>
+                </label>
+                <button type="button" class="link-btn" id="filter-clear">Clear</button>
+                <div class="table-pick-columns-wrap">
+                    <button type="button" class="btn table-settings-reload-btn" id="open-display-settings">
+                        Pick columns
+                    </button>
+                </div>
+            </div>
             <div class="table-shell">
-                <table class="results-table">
+                <table class="results-table" id="guide-results-table">
                     <thead>
                         <tr>
                             <th class="row-indicator-col" scope="col" aria-label="Multi-site guide"></th>
-                            {% for col_key, col_label in display_columns_map %}
-                                <th class="result-col col-{{ col_key }}{% if col_key not in form_data.selected_columns %} col-hidden{% endif %} {% if col_key in sortable_columns %}sortable{% endif %}"
-                                    data-key="{{ col_key }}">
-                                    {{ col_label }}
-                                    {% comment %} showing icon only if column is sortable {% endcomment %}
-                                    {% if col_key in sortable_columns %}
-                                        {% if col_key == "position" %} ▲{% else %} •{% endif %}
-                                    {% endif %}
+                            {% for col in display_column_headers %}
+                                <th class="result-col col-{{ col.key }}{% if col.key == 'position' or col.key == 'wt_codon' or col.key == 'wt_aa' or col.key == 'mut_aa' %} sticky-col{% endif %}{% if col.key not in form_data.selected_columns %} col-hidden{% endif %} {% if col.key in sortable_columns %}sortable{% endif %}"
+                                    data-key="{{ col.key }}">
+                                    <span class="col-header-label">
+                                        {{ col.label }}
+                                        {% if col.key in sortable_columns %}
+                                            {% if col.key == "position" %} ▲{% else %} •{% endif %}
+                                        {% endif %}
+                                        {% if col.help %}
+                                        <span class="col-help-tip" tabindex="0" role="button"
+                                              aria-label="About {{ col.label }}"
+                                              data-tip="{{ col.help }}">?</span>
+                                        {% endif %}
+                                    </span>
                                 </th>
                             {% endfor %}
                         </tr>
                     </thead>
                     <tbody>
                         {% for row in results %}
-                        <tr data-sgrna-seq="{{ row.sgrna_seq }}" data-binding-count="{{ row.binding_count|default:1 }}" data-position="{{ row.position }}">
+                        <tr data-sgrna-seq="{{ row.sgrna_seq }}"
+                            data-binding-count="{{ row.binding_count|default:1 }}"
+                            data-position="{{ row.position }}"
+                            data-am="{% if row.alpha_score is not None %}{{ row.alpha_score }}{% endif %}"
+                            data-esm="{% if row.esm1b_score is not None %}{{ row.esm1b_score }}{% endif %}"
+                            data-cadd="{% if row.cadd_phred is not None %}{{ row.cadd_phred }}{% endif %}"
+                            data-editor="{{ row.editor_used|default:'' }}"
+                            data-clinvar="{% if row.clinvar_at_position %}{% for v in row.clinvar_at_position %}{{ v.classification }}{% if not forloop.last %}|{% endif %}{% endfor %}{% endif %}">
                             <td class="row-indicator-col">
                                 {% if row.binding_count > 1 %}
                                     <span class="multi-bind-badge" title="Maps to {{ row.binding_count }} positions: {% for p in row.binding_positions %}{{ p }}{% if not forloop.last %}, {% endif %}{% endfor %}">×{{ row.binding_count }}</span>
                                 {% endif %}
                             </td>
                             {% for col_key, col_label in display_columns_map %}
-                                <td class="result-col col-{{ col_key }}{% if col_key not in form_data.selected_columns %} col-hidden{% endif %}" data-col="{{ col_key }}">
+                                <td class="result-col col-{{ col_key }}{% if col_key == 'position' or col_key == 'wt_codon' or col_key == 'wt_aa' or col_key == 'mut_aa' %} sticky-col{% endif %}{% if col_key not in form_data.selected_columns %} col-hidden{% endif %}" data-col="{{ col_key }}">
                                     {% if col_key == "position" %}{{ row.position }}
                                     {% elif col_key == "wt_codon" %}<span class="sequence-chip">{{ row.wt_codon }}</span>
                                     {% elif col_key == "wt_aa" %}{{ row.wt_aa }}
@@ -337,15 +365,15 @@
                                     {% elif col_key == "target_position" %}{{ row.target_position|join:", " }}
                                     {% elif col_key == "outcomes" %}
                                         <div class="mono outcomes-cell">
-                                            {% for o in row.outcomes %}<div class="outcome-item{% if o|slice:"-1:" == "*" %} outcome-significant{% endif %}">{{ o }}</div>{% endfor %}
+                                            {% for o in row.outcomes %}<div class="outcome-item{% if o.significant %} outcome-significant{% endif %}">{% if o.text %}{{ o.text }}{% else %}{{ o }}{% endif %}</div>{% endfor %}
                                         </div>
                                     {% elif col_key == "esm1b_outcomes" %}
                                         <div class="mono outcomes-cell">
-                                            {% for o in row.esm1b_outcomes %}<div class="outcome-item{% if o|slice:"-1:" == "*" %} outcome-significant{% endif %}">{{ o }}</div>{% endfor %}
+                                            {% for o in row.esm1b_outcomes %}<div class="outcome-item{% if o.significant %} outcome-significant{% endif %}">{% if o.text %}{{ o.text }}{% else %}{{ o }}{% endif %}</div>{% endfor %}
                                         </div>
                                     {% elif col_key == "cadd_outcomes" %}
                                         <div class="mono outcomes-cell">
-                                            {% for o in row.cadd_outcomes %}<div class="outcome-item{% if o|slice:"-1:" == "*" %} outcome-significant{% endif %}">{{ o }}</div>{% endfor %}
+                                            {% for o in row.cadd_outcomes %}<div class="outcome-item{% if o.significant %} outcome-significant{% endif %}">{% if o.text %}{{ o.text }}{% else %}{{ o }}{% endif %}</div>{% endfor %}
                                         </div>
                                     {% elif col_key == "avg_alpha_score" %}
                                         <span class="score-cell">{{ row.avg_alpha_score|floatformat:3 }}</span>
@@ -366,7 +394,7 @@
                 </table>
             </div>
             <p class="help-text score-threshold-legend" role="note">
-                <strong>*</strong> marks values that pass the author cutoff for that score
+                Highlighted values pass the author cutoff for that score
                 (display only — not the analysis filter):
                 AlphaMissense ≥ {{ am_likely_pathogenic_threshold }}
                 (Cheng et al., Science 2023 / <code>likely_pathogenic</code>);
@@ -377,17 +405,35 @@
             </p>
         </div>
 
-        <aside class="results-structure-pane" aria-label="Protein structure">
-            <h3 class="results-subtitle results-pane-heading">Structure viewer</h3>
-            <p class="help-text structure-pane-help">
-                AlphaFold model for
-                <strong>{{ structure_accession|default:form_data.uniprot_accession|default:form_data.uniprot_id }}</strong>.
-                Hover a row to preview a residue; click to keep it highlighted and gently frame it.
-            </p>
-            <p id="structure-viewer-status" class="help-text">Loading structure…</p>
-            <div id="structure-viewer" class="structure-viewer"></div>
+        <aside class="results-structure-pane is-collapsed" id="structure-pane" aria-label="Protein structure">
+            <div class="structure-pane-header">
+                <h3 class="results-subtitle results-pane-heading">Structure viewer</h3>
+                <button type="button" class="toggle-btn structure-pane-toggle" id="structure-pane-toggle"
+                        aria-expanded="false" aria-controls="structure-pane-body">
+                    Show structure viewer
+                </button>
+            </div>
+            <div class="structure-pane-body" id="structure-pane-body" hidden>
+                <p class="help-text structure-pane-help">
+                    AlphaFold model for
+                    <strong>{{ structure_accession|default:form_data.uniprot_accession|default:form_data.uniprot_id }}</strong>.
+                    Hover a row to preview a residue; click to keep it highlighted and gently frame it.
+                </p>
+                <p id="structure-viewer-status" class="help-text">Loading structure…</p>
+                <div id="structure-viewer" class="structure-viewer"></div>
+            </div>
         </aside>
     </section>
+
+    <dialog id="guide-detail-modal" class="guide-detail-modal">
+        <div class="guide-detail-modal-inner">
+            <div class="guide-detail-modal-header">
+                <h3 class="guide-detail-modal-title">Guides at position <span id="guide-modal-pos"></span></h3>
+                <button type="button" class="guide-detail-modal-close" id="guide-modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div id="guide-modal-body"></div>
+        </div>
+    </dialog>
 
     {% if no_guide_count %}
     <section class="no-guide-section">
@@ -534,16 +580,18 @@ function toggleNoGuideSection(button) {
     }
 }
 
-function toggleDisplayOptions(button) {
-    const panel = document.getElementById("display-options-panel");
-    const isHidden = panel.hasAttribute("hidden");
-    if (isHidden) {
-        panel.removeAttribute("hidden");
-        button.innerText = "Hide display & filters";
-    } else {
-        panel.setAttribute("hidden", "hidden");
-        button.innerText = "Change display & filters";
-    }
+function openDisplaySettingsModal() {
+    const modal = document.getElementById("display-settings-modal");
+    if (!modal) return;
+    if (typeof modal.showModal === "function") modal.showModal();
+    else modal.setAttribute("open", "");
+}
+
+function closeDisplaySettingsModal() {
+    const modal = document.getElementById("display-settings-modal");
+    if (!modal) return;
+    if (typeof modal.close === "function") modal.close();
+    else modal.removeAttribute("open");
 }
 
 function setColumnVisible(colKey, visible) {
@@ -587,7 +635,22 @@ document.addEventListener("DOMContentLoaded", function() {
     const applyBtn = document.getElementById("apply-display-settings");
     if (applyBtn) {
         applyBtn.closest("form").addEventListener("submit", function () {
-            applyBtn.innerText = "Applying...";
+            applyBtn.innerText = "Reloading…";
+        });
+    }
+
+    const openSettingsBtn = document.getElementById("open-display-settings");
+    if (openSettingsBtn) {
+        openSettingsBtn.addEventListener("click", openDisplaySettingsModal);
+    }
+    const closeSettingsBtn = document.getElementById("display-settings-close");
+    if (closeSettingsBtn) {
+        closeSettingsBtn.addEventListener("click", closeDisplaySettingsModal);
+    }
+    const settingsModal = document.getElementById("display-settings-modal");
+    if (settingsModal) {
+        settingsModal.addEventListener("click", function (ev) {
+            if (ev.target === settingsModal) closeDisplaySettingsModal();
         });
     }
 
@@ -749,6 +812,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const bodyRows = Array.from(tbody.querySelectorAll("tr"));
         const visibleSeqCounts = {};
         bodyRows.forEach(row => {
+            if (row.style.display === 'none') return;
             const seq = row.getAttribute("data-sgrna-seq");
             if (seq) visibleSeqCounts[seq] = (visibleSeqCounts[seq] || 0) + 1;
         });
@@ -762,6 +826,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 'sgrna-group-a', 'sgrna-group-b', 'sgrna-group-c', 'sgrna-group-d', 'sgrna-group-e',
                 'sgrna-group-partial'
             );
+            if (row.style.display === 'none') return;
             const seq = row.getAttribute("data-sgrna-seq");
             const bindingCount = parseInt(row.getAttribute("data-binding-count") || "1", 10);
             if (!seq) return;
@@ -777,6 +842,7 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
     }
+    window.applyGroupColors = applyGroupColors;
 
     // call on initial load
     applyGroupColors();
@@ -1089,17 +1155,39 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             return;
         }
-        Plotly.newPlot(screenOverviewChart, data.figure.data, data.figure.layout, { responsive: true });
+        Plotly.newPlot(screenOverviewChart, data.figure.data, data.figure.layout, {
+            responsive: true,
+            displayModeBar: false,
+        }).then(function () {
+            const w = screenOverviewChart.clientWidth;
+            if (w > 0 && window.Plotly) {
+                Plotly.relayout(screenOverviewChart, {
+                    width: w,
+                    autosize: true,
+                });
+                try { Plotly.Plots.resize(screenOverviewChart); } catch (e) {}
+            }
+        });
         if (screenOverviewChart._clinvarClickHandler) {
             screenOverviewChart.removeListener('plotly_click', screenOverviewChart._clinvarClickHandler);
         }
         screenOverviewChart._clinvarClickHandler = function (ev) {
             const pt = ev.points && ev.points[0];
             if (!pt) return;
-            let url = pt.customdata;
-            if (Array.isArray(url)) url = url[0];
-            if (typeof url === 'string' && url.indexOf('http') === 0) {
-                window.open(url, '_blank', 'noopener,noreferrer');
+            let cd = pt.customdata;
+            if (Array.isArray(cd)) cd = cd[0];
+            if (typeof cd === 'string' && cd.indexOf('http') === 0) {
+                window.open(cd, '_blank', 'noopener,noreferrer');
+                return;
+            }
+            let position = null;
+            if (cd && typeof cd === 'object' && cd.type === 'guide') {
+                position = cd.position;
+            } else if (pt.data && pt.data.type === 'bar' && pt.x != null) {
+                position = pt.x;
+            }
+            if (position != null) {
+                openGuideDetailModal(position);
             }
         };
         screenOverviewChart.on('plotly_click', screenOverviewChart._clinvarClickHandler);
@@ -1237,7 +1325,7 @@ function toggleScreenPlotPanel(btn) {
 }
 
 function downloadTableAsCSV() {
-    const table = document.querySelector('.results-table');
+    const table = document.getElementById('guide-results-table') || document.querySelector('.results-table');
     if (!table) return;
 
     const rows = [];
@@ -1246,7 +1334,7 @@ function downloadTableAsCSV() {
     const headers = headerCells.map(th => th.innerText.replace(/[▲▼•]/g, '').trim());
     rows.push(headers);
 
-    const bodyRows = Array.from(table.querySelectorAll('tbody tr'));
+    const bodyRows = Array.from(table.querySelectorAll('tbody tr')).filter(row => row.style.display !== 'none');
     bodyRows.forEach(row => {
         const cells = Array.from(row.querySelectorAll('td:not(.col-hidden):not(.row-indicator-col)'));
         const rowData = cells.map(td => {
@@ -1266,6 +1354,135 @@ function downloadTableAsCSV() {
     link.click();
     URL.revokeObjectURL(url);
 }
+
+function parseOptionalNumber(value) {
+    if (value == null || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+}
+
+function applyClientTableFilters() {
+    const table = document.getElementById('guide-results-table');
+    if (!table) return;
+    const amMin = parseOptionalNumber(document.getElementById('filter-am-min')?.value);
+    const esmMax = parseOptionalNumber(document.getElementById('filter-esm-max')?.value);
+    const caddMin = parseOptionalNumber(document.getElementById('filter-cadd-min')?.value);
+    const clinvarMode = document.getElementById('filter-clinvar')?.value || 'all';
+
+    table.querySelectorAll('tbody tr').forEach(row => {
+        const am = parseOptionalNumber(row.getAttribute('data-am'));
+        const esm = parseOptionalNumber(row.getAttribute('data-esm'));
+        const cadd = parseOptionalNumber(row.getAttribute('data-cadd'));
+        const clinvarRaw = (row.getAttribute('data-clinvar') || '').trim();
+        const hasClinvar = clinvarRaw.length > 0;
+        const clinvarParts = hasClinvar ? clinvarRaw.split('|') : [];
+        const pathogenic = clinvarParts.some(c => {
+            const lower = c.toLowerCase();
+            return lower === 'pathogenic' || lower === 'likely pathogenic';
+        });
+
+        let show = true;
+        if (amMin != null && (am == null || am < amMin)) show = false;
+        if (esmMax != null && (esm == null || esm > esmMax)) show = false;
+        if (caddMin != null && (cadd == null || cadd < caddMin)) show = false;
+        if (clinvarMode === 'any' && !hasClinvar) show = false;
+        if (clinvarMode === 'none' && hasClinvar) show = false;
+        if (clinvarMode === 'pathogenic' && !pathogenic) show = false;
+        row.style.display = show ? '' : 'none';
+    });
+
+    if (typeof applyGroupColors === 'function') {
+        try { applyGroupColors(); } catch (e) {}
+    }
+}
+
+function openGuideDetailModal(position) {
+    const modal = document.getElementById('guide-detail-modal');
+    const body = document.getElementById('guide-modal-body');
+    const posEl = document.getElementById('guide-modal-pos');
+    const table = document.getElementById('guide-results-table');
+    if (!modal || !body || !table) return;
+    const posStr = String(position);
+    if (posEl) posEl.textContent = posStr;
+
+    const matches = Array.from(table.querySelectorAll('tbody tr')).filter(
+        row => String(row.getAttribute('data-position')) === posStr
+    );
+    if (!matches.length) {
+        body.innerHTML = '<p class="help-text">No guide rows at this position in the current table.</p>';
+    } else {
+        const rowsHtml = matches.map(row => {
+            const seq = row.getAttribute('data-sgrna-seq') || '—';
+            const editor = row.getAttribute('data-editor') || '—';
+            const am = row.getAttribute('data-am');
+            const esm = row.getAttribute('data-esm');
+            const cadd = row.getAttribute('data-cadd');
+            const clinvar = (row.getAttribute('data-clinvar') || '').split('|').filter(Boolean).join(', ') || '—';
+            const fmt = (v, digits) => (v == null || v === '') ? '—' : Number(v).toFixed(digits);
+            return '<tr>'
+                + '<td class="mono">' + seq.replace(/</g, '&lt;') + '</td>'
+                + '<td>' + editor.replace(/</g, '&lt;') + '</td>'
+                + '<td>' + fmt(am, 3) + '</td>'
+                + '<td>' + fmt(esm, 3) + '</td>'
+                + '<td>' + fmt(cadd, 2) + '</td>'
+                + '<td>' + clinvar.replace(/</g, '&lt;') + '</td>'
+                + '</tr>';
+        }).join('');
+        body.innerHTML = '<table class="guide-detail-table"><thead><tr>'
+            + '<th>Guide seq</th><th>Editor</th><th>AM</th><th>ESM1b</th><th>CADD</th><th>ClinVar</th>'
+            + '</tr></thead><tbody>' + rowsHtml + '</tbody></table>';
+    }
+    if (typeof modal.showModal === 'function') {
+        modal.showModal();
+    } else {
+        modal.setAttribute('open', '');
+    }
+}
+
+(function initResultsUxExtras() {
+    const split = document.querySelector('.results-main-split');
+    const pane = document.getElementById('structure-pane');
+    const toggle = document.getElementById('structure-pane-toggle');
+    const body = document.getElementById('structure-pane-body');
+    if (toggle && pane && body && split) {
+        toggle.addEventListener('click', function () {
+            const collapsed = pane.classList.toggle('is-collapsed');
+            split.classList.toggle('structure-collapsed', collapsed);
+            body.hidden = collapsed;
+            toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            toggle.textContent = collapsed ? 'Show structure viewer' : 'Hide structure viewer';
+        });
+    }
+
+    ['filter-am-min', 'filter-esm-max', 'filter-cadd-min', 'filter-clinvar'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', applyClientTableFilters);
+        if (el) el.addEventListener('change', applyClientTableFilters);
+    });
+    const clearBtn = document.getElementById('filter-clear');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function () {
+            const am = document.getElementById('filter-am-min');
+            const esm = document.getElementById('filter-esm-max');
+            const cadd = document.getElementById('filter-cadd-min');
+            const clin = document.getElementById('filter-clinvar');
+            if (am) am.value = '';
+            if (esm) esm.value = '';
+            if (cadd) cadd.value = '';
+            if (clin) clin.value = 'all';
+            applyClientTableFilters();
+        });
+    }
+
+    const guideModal = document.getElementById('guide-detail-modal');
+    const guideClose = document.getElementById('guide-modal-close');
+    if (guideClose && guideModal) {
+        guideClose.addEventListener('click', function () {
+            if (typeof guideModal.close === 'function') guideModal.close();
+            else guideModal.removeAttribute('open');
+        });
+    }
+})();
 
 </script>
 
@@ -1322,7 +1539,24 @@ th.sortable:hover { background-color: var(--sortable-hover, #eee); }
 .screen-plot-lookup-note { font-size: 0.9em; opacity: 0.85; }
 .screen-plot-status-msg { margin: 8px 0 0 0; font-style: italic; }
 #screen-plot-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-.screen-overview-chart { width: 100%; min-height: 360px; border: 1px solid #ddd; border-radius: 8px; padding: 8px; background: #fafafa; }
+.screen-overview-chart {
+    width: 100%;
+    max-width: 100%;
+    min-height: 360px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 8px;
+    background: #fafafa;
+    box-sizing: border-box;
+    overflow: hidden;
+    position: relative;
+}
+.screen-overview-chart .js-plotly-plot,
+.screen-overview-chart .plot-container,
+.screen-overview-chart .svg-container {
+    width: 100% !important;
+    max-width: 100% !important;
+}
 .marker-swatch { display: inline-block; padding: 0 6px; margin: 0 4px; border-radius: 4px; font-size: 0.85em; font-weight: 600; }
 .marker-tnfa { background: #22c55e; color: #052e16; }
 .marker-ifng { background: #f97316; color: #431407; }
@@ -1338,5 +1572,40 @@ th.sortable:hover { background-color: var(--sortable-hover, #eee); }
 .clinvar-benign { background: #16a34a; }
 .clinvar-conflict { background: #7c3aed; }
 </style>
+
+{% if form_data.cadd_status == 'pending' %}
+<script>
+(function () {
+    var statusUrl = "{% url 'cadd_status' %}";
+    var statusEl = document.getElementById('cadd-status-msg');
+    var pollMs = 3000;
+
+    function poll() {
+        fetch(statusUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                var status = data.status || 'idle';
+                if (status === 'done') {
+                    window.location.reload();
+                    return;
+                }
+                if (status === 'error') {
+                    if (statusEl) {
+                        statusEl.hidden = false;
+                        statusEl.innerHTML = '<strong>CADD:</strong> ' + (data.error || 'CADD enrichment failed.');
+                    }
+                    return;
+                }
+                setTimeout(poll, pollMs);
+            })
+            .catch(function () {
+                setTimeout(poll, pollMs);
+            });
+    }
+
+    poll();
+})();
+</script>
+{% endif %}
 
 {% endblock %}

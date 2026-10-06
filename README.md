@@ -33,6 +33,8 @@ Guide RNAs that span **exon-intron boundaries** are automatically excluded.
 
 AlphaMissense scores are retrieved from a **PostgreSQL database**. ESM1b and CADD are extra sortable columns; AlphaMissense still drives ranking, the score filter, and coverage bins.
 
+When **precomputed guide shards** are present under `data/precomputed_guides/` (see [`precomputation_scripts/README.md`](precomputation_scripts/README.md)), AMBER serves UniProt requests from Parquet for editing windows **1–10** and PAM **NGG / NG / NAG**, falling back to live design otherwise. Set `PRECOMPUTED_GUIDES_DISABLE=1` or `PRECOMPUTED_GUIDES_DIR` to override the path.
+
 ---
 
 ## Repository Structure

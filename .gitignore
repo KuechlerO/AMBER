@@ -213,3 +213,6 @@ __marimo__/
 
 # DTU SignalP licensed download (~1.5 GB); keep locally, mount via docker-compose
 signalp-6.0*.fast.tar.gz
+
+# Large precomputed guide shards
+data/precomputed_guides/
