@@ -136,6 +136,25 @@ def _start_cadd_enrichment(session_key: str) -> None:
     thread.start()
 
 
+def update_job_progress(session_key: str, *, stage: str, message: str) -> None:
+    """Update stage/message while keeping status=running (if still running)."""
+    key = _job_cache_key(session_key)
+    with _lock:
+        state = cache.get(key) or {}
+        if state.get('status') not in (None, 'running'):
+            return
+        cache.set(
+            key,
+            {
+                'status': 'running',
+                'error': None,
+                'stage': stage,
+                'message': message,
+            },
+            JOB_TIMEOUT,
+        )
+
+
 def start_analysis(session_key: str, form: dict[str, Any]) -> bool:
     """Start analysis in a daemon thread. Returns True if a new job was started."""
     key = _job_cache_key(session_key)
@@ -143,8 +162,20 @@ def start_analysis(session_key: str, form: dict[str, Any]) -> bool:
         state = cache.get(key)
         if state and state.get('status') == 'running':
             return False
-        cache.set(key, {'status': 'running', 'error': None}, JOB_TIMEOUT)
+        cache.set(
+            key,
+            {
+                'status': 'running',
+                'error': None,
+                'stage': 'starting',
+                'message': 'Starting analysis… (source: AMBER)',
+            },
+            JOB_TIMEOUT,
+        )
         cache.delete(_cadd_cache_key(session_key))
+
+    def _progress(stage: str, message: str) -> None:
+        update_job_progress(session_key, stage=stage, message=message)
 
     def _work() -> None:
         try:
@@ -153,6 +184,7 @@ def start_analysis(session_key: str, form: dict[str, Any]) -> bool:
             form_local = dict(form)
             form_local['uniprot_id'] = normalize_input_id(form_local.get('uniprot_id', ''))
             window_min, window_max = parse_editing_window(_form_adapter(form_local))
+            _progress('pipeline', 'Running guide design pipeline… (source: AMBER)')
             analysis_result = _normalize_analysis_result(run_analysis(
                 uniprot_id=form_local.get('uniprot_id', ''),
                 editor=form_local.get('editor', 'BOTH'),
@@ -161,7 +193,9 @@ def start_analysis(session_key: str, form: dict[str, Any]) -> bool:
                 window_min=window_min,
                 window_max=window_max,
                 pam_type=form_local.get('pam_type', 'NGG'),
+                progress_callback=_progress,
             ))
+            _progress('saving', 'Saving results… (source: AMBER)')
             full_rows = analysis_result['guide_rows']
             no_guide_full = analysis_result.get('no_guide_positions') or []
             form_data = _build_form_data(form_local, analysis_result)
@@ -176,13 +210,35 @@ def start_analysis(session_key: str, form: dict[str, Any]) -> bool:
                 no_guide_positions=no_guide_full,
                 cadd_status=cadd_status,
             )
-            cache.set(key, {'status': 'done', 'error': None}, JOB_TIMEOUT)
+            cache.set(
+                key,
+                {
+                    'status': 'done',
+                    'error': None,
+                    'stage': 'done',
+                    'message': 'Analysis complete.',
+                },
+                JOB_TIMEOUT,
+            )
             if cadd_status == 'pending':
                 _start_cadd_enrichment(session_key)
         except UserInputError as exc:
-            cache.set(key, {'status': 'error', 'error': str(exc)}, JOB_TIMEOUT)
+            cache.set(
+                key,
+                {'status': 'error', 'error': str(exc), 'stage': 'error', 'message': str(exc)},
+                JOB_TIMEOUT,
+            )
         except Exception as exc:  # noqa: BLE001
-            cache.set(key, {'status': 'error', 'error': f'Analysis failed: {exc}'}, JOB_TIMEOUT)
+            cache.set(
+                key,
+                {
+                    'status': 'error',
+                    'error': f'Analysis failed: {exc}',
+                    'stage': 'error',
+                    'message': f'Analysis failed: {exc}',
+                },
+                JOB_TIMEOUT,
+            )
 
     thread = threading.Thread(target=_work, daemon=True, name=f'amber-{session_key[:8]}')
     thread.start()
@@ -190,14 +246,19 @@ def start_analysis(session_key: str, form: dict[str, Any]) -> bool:
 
 
 def get_status(session_key: str) -> dict[str, Any]:
-    """Return job status for polling: idle | running | done | error."""
+    """Return job status for polling: idle | running | done | error (+ stage/message)."""
     key = _job_cache_key(session_key)
     state = cache.get(key)
     if state:
         return dict(state)
     if result_store.load_analysis_results_by_key(session_key):
-        return {'status': 'done', 'error': None}
-    return {'status': 'idle', 'error': None}
+        return {
+            'status': 'done',
+            'error': None,
+            'stage': 'done',
+            'message': 'Analysis complete.',
+        }
+    return {'status': 'idle', 'error': None, 'stage': 'idle', 'message': None}
 
 
 def get_cadd_job_status(session_key: str) -> dict[str, Any]:

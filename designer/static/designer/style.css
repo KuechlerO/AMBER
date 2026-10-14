@@ -2150,12 +2150,13 @@ th.sortable:hover {
     }
 }
 
-/* Guide coverage + protein map + structure viewer */
+/* Guide coverage + protein map + screen enrichment (match structure pane frame) */
 .coverage-summary-section {
     margin: 1.25rem 0 1.5rem;
     padding: 1rem 1.05rem;
     border-radius: 18px;
     background: linear-gradient(135deg, var(--summary-box-start), var(--bg-elevated));
+    border: 1px solid var(--border-subtle);
 }
 
 .section-header-row {

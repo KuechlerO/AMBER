@@ -9,14 +9,18 @@ from .gene_lookup import (
 )
 from .data_loader import get_screen_data_store
 from .plotly_builder import (
+    BE_TYPES,
     MARKER_COLORS,
     build_full_screen_figure,
     build_overview_figure,
     build_screen_enrichment_figure,
+    default_lfc_panels,
+    parse_lfc_panel_key,
 )
 
 __all__ = [
     'SCREEN_MARKERS',
+    'BE_TYPES',
     'MARKER_COLORS',
     'lookup_gene_by_uniprot',
     'normalize_uniprot_accession',
@@ -26,4 +30,6 @@ __all__ = [
     'build_overview_figure',
     'build_full_screen_figure',
     'build_screen_enrichment_figure',
+    'default_lfc_panels',
+    'parse_lfc_panel_key',
 ]

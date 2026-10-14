@@ -39,11 +39,16 @@ from .protein_map import (
 )
 from .screen_plot import (
     SCREEN_MARKERS,
+    build_full_screen_figure,
     build_overview_figure,
     get_screen_data_store,
     lookup_gene_by_uniprot,
     normalize_uniprot_accession,
     screen_plot_eligibility,
+)
+from .screen_plot.plotly_builder import (
+    default_lfc_panels,
+    parse_lfc_panel_key,
 )
 from .screen_plot.figure_cache import (
     cache_key,
@@ -1205,9 +1210,44 @@ def screen_plot_full_status(request):
     })
 
 
+def _parse_enrichment_panel_selection(request) -> tuple[list[tuple[str, str]], bool, bool]:
+    """Parse LFC panel + domains/guides toggles from POST (defaults: all on)."""
+    def _flag(name: str, default: bool = True) -> bool:
+        if name not in request.POST:
+            return default
+        return str(request.POST.get(name)).strip().lower() in ('1', 'true', 'yes', 'on')
+
+    explicit = (
+        'panels_specified' in request.POST
+        or 'include_domains' in request.POST
+        or 'include_guides' in request.POST
+    )
+    raw_panels = request.POST.getlist('panels')
+    if len(raw_panels) == 1 and ',' in raw_panels[0]:
+        raw_panels = [p.strip() for p in raw_panels[0].split(',') if p.strip()]
+
+    if explicit:
+        panels = []
+        seen = set()
+        for key in raw_panels:
+            parsed = parse_lfc_panel_key(key)
+            if not parsed or parsed in seen:
+                continue
+            seen.add(parsed)
+            panels.append(parsed)
+        include_domains = _flag('include_domains', True)
+        include_guides = _flag('include_guides', True)
+    else:
+        panels = default_lfc_panels()
+        include_domains = True
+        include_guides = True
+
+    return panels, include_domains, include_guides
+
+
 @require_POST
 def screen_enrichment_plot(request):
-    """Return cached full-screen Plotly figure (all markers, LFC only)."""
+    """Return Plotly enrichment figure for the selected panels."""
     uniprot_id = (request.POST.get('uniprot_id') or '').strip()
 
     ctx, err = _full_screen_plot_context(request, uniprot_id)
@@ -1228,23 +1268,50 @@ def screen_enrichment_plot(request):
             status=202,
         )
 
-    key = cache_key(gene, guide_positions)
-    figure_json = get_cached_figure(key)
-    if figure_json is None:
-        build_err = get_build_error(key)
-        if build_err:
-            return JsonResponse(
-                {'available': False, 'reason': f'Could not build screen plot: {build_err}'},
-                status=500,
-            )
-        started = _ensure_full_figure_build_started(gene, guide_positions, store)
+    panels, include_domains, include_guides = _parse_enrichment_panel_selection(request)
+    if not panels and not include_domains and not include_guides:
         return JsonResponse(
-            {
-                'available': False,
-                'building': is_building(key) or started,
-                'reason': 'Screen plots are still being prepared. Please wait a moment and try again.',
-            },
-            status=202,
+            {'available': False, 'reason': 'Select at least one panel to display.'},
+            status=400,
+        )
+
+    default_all = (
+        panels == default_lfc_panels()
+        and include_domains
+        and include_guides
+    )
+    key = cache_key(gene, guide_positions)
+    if default_all:
+        figure_json = get_cached_figure(key)
+        if figure_json is not None:
+            return JsonResponse({
+                'available': True,
+                'figure': figure_json,
+                'gene': gene,
+                'markers': list(SCREEN_MARKERS),
+                'panels': [f'{m}_{b}' for m, b in panels],
+                'include_domains': include_domains,
+                'include_guides': include_guides,
+            })
+        # Warm cache in background; still build synchronously so panel picker stays responsive.
+        _ensure_full_figure_build_started(gene, guide_positions, store)
+
+    try:
+        fig = build_full_screen_figure(
+            gene,
+            guide_positions=guide_positions,
+            store=store,
+            lfc_panels=panels,
+            include_domains=include_domains,
+            include_guides=include_guides,
+        )
+        figure_json = json.loads(fig.to_json())
+    except ValueError as exc:
+        return JsonResponse({'available': False, 'reason': str(exc)}, status=400)
+    except Exception as exc:  # noqa: BLE001
+        return JsonResponse(
+            {'available': False, 'reason': f'Could not build screen plot: {exc}'},
+            status=500,
         )
 
     return JsonResponse({
@@ -1252,6 +1319,9 @@ def screen_enrichment_plot(request):
         'figure': figure_json,
         'gene': gene,
         'markers': list(SCREEN_MARKERS),
+        'panels': [f'{m}_{b}' for m, b in panels],
+        'include_domains': include_domains,
+        'include_guides': include_guides,
     })
 
 

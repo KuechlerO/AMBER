@@ -1,6 +1,6 @@
 (function () {
     var STORAGE_KEY = 'amber-theme';
-    var DEFAULT_THEME = 'amber';
+    var DEFAULT_THEME = 'scientific';
     var VALID = ['green', 'amber', 'scientific'];
 
     function applyTheme(theme) {

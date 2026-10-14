@@ -15,8 +15,12 @@ _building: set[tuple] = set()
 _build_errors: dict[tuple, str] = {}
 
 
+# Bump when full-screen layout (height/spacing) changes so stale figures are rebuilt.
+_LAYOUT_VERSION = 2
+
+
 def cache_key(gene: str, guide_positions: list[int]) -> tuple:
-    return gene, tuple(guide_positions)
+    return gene, tuple(guide_positions), _LAYOUT_VERSION
 
 
 def get_cached_figure(key: tuple) -> dict[str, Any] | None:

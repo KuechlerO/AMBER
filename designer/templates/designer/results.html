@@ -486,52 +486,87 @@
     </section>
     {% endif %}
 
-    <section class="screen-plot-section" style="margin-top: 40px;">
-        <h3 class="results-subtitle">Screen enrichment plots (optional)</h3>
-        <p class="help-text">
-            These plots show log-fold-change (LFC) enrichment from the NGG base-editing screen in
-            <a href="https://www.nature.com/articles/s41586-023-06835-6" target="_blank" rel="noopener">
-                Schmidt et al., <em>Nature</em> (2024)
-            </a>
-            — a large-scale mutagenesis map of T cell–function genes in primary human T cells.
-            Panels cover TNFα, IFNG, PD1, and CD25 readouts (ABE and CBE).
-            Guide sequences and mapped edit sites come from
-            <strong>Supplementary Table&nbsp;2</strong>; enrichment LFCs come from
-            Supplementary Table&nbsp;3.
-            Gene membership (~389 genes) follows Supplementary Table&nbsp;1
-            (same set as Table&nbsp;2) —
-            <a href="{% url 'screen_library' %}" target="_blank" rel="noopener">view all included genes</a>.
-            This is published screen data, not output from your AlphaMissense run.
-        </p>
-        <p class="help-text">
-            Colored AMBER guide bars mark residues where AMBER found a qualifying guide under
-            <em>your</em> analysis settings (PAM and editing window; default window positions 4–8).
-            Screen LFC can still appear at residues AMBER does not mark: the publication often
-            annotates a broader CBE activity window than AMBER’s default, and one guide’s LFC can
-            be assigned to multiple amino acids via multi-site annotations.
-            Domains and colored AMBER guides are shown again at the bottom of the enrichment figure.
-        </p>
+    <section class="coverage-summary-section screen-enrichment-section" id="screen-enrichment-section">
+        <div class="section-header-row">
+            <h3 class="section-header-title">Screen enrichment plots</h3>
+            {% if screen_plot_available %}
+            <button type="button" class="toggle-btn section-show-hide" id="screen-enrichment-toggle"
+                    onclick="toggleResultsSection(this, 'screen-enrichment-panel', 'Show', 'Hide')"
+                    aria-expanded="false" aria-controls="screen-enrichment-panel">
+                Show
+            </button>
+            {% endif %}
+        </div>
         {% if screen_plot_available %}
+        <div id="screen-enrichment-panel" class="section-collapsible-panel" hidden>
+            <p class="help-text">
+                These plots show log-fold-change (LFC) enrichment from the NGG base-editing screen in
+                <a href="https://www.nature.com/articles/s41586-023-06835-6" target="_blank" rel="noopener">
+                    Schmidt et al., <em>Nature</em> (2024)
+                </a>
+                — a large-scale mutagenesis map of T cell–function genes in primary human T cells.
+                Panels cover TNFα, IFNG, PD1, and CD25 readouts (ABE and CBE).
+                Guide sequences and mapped edit sites come from
+                <strong>Supplementary Table&nbsp;2</strong>; enrichment LFCs come from
+                Supplementary Table&nbsp;3.
+                Gene membership (~389 genes) follows Supplementary Table&nbsp;1
+                (same set as Table&nbsp;2) —
+                <a href="{% url 'screen_library' %}" target="_blank" rel="noopener">view all included genes</a>.
+                This is published screen data, not output from your AlphaMissense run.
+            </p>
+            <p class="help-text">
+                Colored AMBER guide bars mark residues where AMBER found a qualifying guide under
+                <em>your</em> analysis settings (PAM and editing window; default window positions 4–8).
+                Screen LFC can still appear at residues AMBER does not mark: the publication often
+                annotates a broader CBE activity window than AMBER’s default, and one guide’s LFC can
+                be assigned to multiple amino acids via multi-site annotations.
+                Domains and colored AMBER guides are shown again at the bottom of the enrichment figure.
+            </p>
             {% if screen_plot_lookup_uniprot and screen_plot_lookup_uniprot != form_data.uniprot_id %}
                 <p class="help-text screen-plot-lookup-note">Library match: {{ screen_plot_lookup_uniprot }}</p>
             {% endif %}
-            <div class="screen-plot-controls">
-                <button type="button" class="btn" id="screen-plot-btn" disabled aria-disabled="true">Loading screen data…</button>
-            </div>
             <p id="screen-plot-status" class="help-text screen-plot-status-msg">Checking screen data status…</p>
-            <button type="button" class="toggle-btn screen-plot-toggle" id="screen-plot-panel-toggle" hidden onclick="toggleScreenPlotPanel(this)">
-                Show / hide screen enrichment plots
-            </button>
-            <div id="screen-plot-panel" class="screen-plot-panel" hidden>
-                <div id="screen-plot-chart" style="width:100%; min-height:600px;"></div>
+            <button type="button" class="btn" id="screen-plot-retry-btn" hidden>Retry loading screen data</button>
+            <div class="screen-enrichment-picker" id="screen-enrichment-picker" hidden>
+                <div class="screen-enrichment-picker-row">
+                    <span class="screen-enrichment-picker-label">Show LFC panels</span>
+                    {% for marker in screen_plot_markers %}
+                    <label class="screen-enrichment-check">
+                        <input type="checkbox" class="screen-enrichment-lfc" value="{{ marker }}_ABE" checked>
+                        {{ marker }} ABE
+                    </label>
+                    <label class="screen-enrichment-check">
+                        <input type="checkbox" class="screen-enrichment-lfc" value="{{ marker }}_CBE" checked>
+                        {{ marker }} CBE
+                    </label>
+                    {% endfor %}
+                </div>
+                <div class="screen-enrichment-picker-row">
+                    <span class="screen-enrichment-picker-label">Tracks</span>
+                    <label class="screen-enrichment-check">
+                        <input type="checkbox" id="screen-enrichment-domains" checked>
+                        UniProt domains
+                    </label>
+                    <label class="screen-enrichment-check">
+                        <input type="checkbox" id="screen-enrichment-guides" checked>
+                        AMBER guides
+                    </label>
+                    <button type="button" class="btn secondary" id="screen-enrichment-select-all">Select all</button>
+                    <button type="button" class="btn secondary" id="screen-enrichment-clear-lfc">Clear LFC</button>
+                </div>
+                <p class="help-text screen-enrichment-picker-hint">Changes update the figure below. Keep at least one panel selected.</p>
             </div>
+            <div id="screen-plot-chart" class="screen-enrichment-chart"></div>
+        </div>
         {% else %}
+        <p class="help-text screen-plot-unavailable">
             {% if screen_plot_unavailable_reason == "data_unavailable" %}
-                <p class="help-text screen-plot-unavailable">Screen plot data is not available on the server (file access). Please contact the administrator.</p>
+                Screen plot data is not available on the server (file access). Please contact the administrator.
             {% else %}
-                <p class="help-text screen-plot-unavailable">Your UniProt ID is not in that library.</p>
+                Your UniProt ID is not in the screen library —
+                <a href="{% url 'screen_library' %}" target="_blank" rel="noopener">view included genes</a>.
             {% endif %}
-            <button type="button" class="btn" id="screen-plot-btn" disabled aria-disabled="true">Generate screen plot</button>
+        </p>
         {% endif %}
     </section>
 
@@ -558,6 +593,14 @@ function toggleResultsSection(button, panelId, showLabel, hideLabel) {
         }
         if (panelId === "coverage-panel" && window.Plotly && document.getElementById("coverage-chart")) {
             try { Plotly.Plots.resize(document.getElementById("coverage-chart")); } catch (e) {}
+        }
+        if (panelId === "screen-enrichment-panel") {
+            if (typeof window.ensureScreenEnrichmentPlotLoaded === "function") {
+                window.ensureScreenEnrichmentPlotLoaded();
+            }
+            if (typeof window.fixScreenEnrichmentPlotSize === "function") {
+                window.fixScreenEnrichmentPlotSize();
+            }
         }
     } else {
         panel.setAttribute("hidden", "hidden");
@@ -990,14 +1033,69 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    const screenPlotBtn = document.getElementById('screen-plot-btn');
+    const screenPlotRetryBtn = document.getElementById('screen-plot-retry-btn');
     const screenPlotStatusEl = document.getElementById('screen-plot-status');
     const screenOverviewStatusEl = document.getElementById('screen-overview-status');
     const screenOverviewChart = document.getElementById('screen-overview-chart');
+    const screenPlotChartEl = document.getElementById('screen-plot-chart');
+    const screenEnrichmentPanel = document.getElementById('screen-enrichment-panel');
     const screenPlotOverlay = document.getElementById('screen-plot-overlay');
     const screenCsrf = document.querySelector('#display-settings-form input[name="csrfmiddlewaretoken"]')?.value || '';
     const screenUniprotId = '{{ form_data.uniprot_accession|default:form_data.uniprot_id|escapejs }}';
     const screenPlotAvailable = {{ screen_plot_available|yesno:"true,false" }};
+    let screenEnrichmentDataReady = false;
+    let screenEnrichmentFigureReady = false;
+    let screenEnrichmentPlotLoaded = false;
+    let screenEnrichmentPlotLoading = false;
+    let screenEnrichmentPlotHeight = 1500;
+    let screenEnrichmentReloadTimer = null;
+    const screenEnrichmentPicker = document.getElementById('screen-enrichment-picker');
+
+    function getSelectedEnrichmentPanels() {
+        const panels = Array.from(document.querySelectorAll('.screen-enrichment-lfc:checked'))
+            .map(el => el.value);
+        const includeDomains = !!document.getElementById('screen-enrichment-domains')?.checked;
+        const includeGuides = !!document.getElementById('screen-enrichment-guides')?.checked;
+        return { panels, includeDomains, includeGuides };
+    }
+
+    function appendEnrichmentPanelParams(body) {
+        const sel = getSelectedEnrichmentPanels();
+        body.append('panels_specified', '1');
+        sel.panels.forEach(p => body.append('panels', p));
+        body.append('include_domains', sel.includeDomains ? '1' : '0');
+        body.append('include_guides', sel.includeGuides ? '1' : '0');
+        return sel;
+    }
+
+    function enrichmentChartInnerWidth() {
+        if (!screenPlotChartEl) return 0;
+        const style = window.getComputedStyle(screenPlotChartEl);
+        const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+        return Math.max(280, Math.floor(screenPlotChartEl.clientWidth - pad));
+    }
+
+    window.fixScreenEnrichmentPlotSize = function fixScreenEnrichmentPlotSize() {
+        if (!screenPlotChartEl || !window.Plotly || !screenEnrichmentPlotLoaded) return;
+        const w = enrichmentChartInnerWidth();
+        if (w <= 0) return;
+        screenPlotChartEl.style.minHeight = screenEnrichmentPlotHeight + 'px';
+        try {
+            Plotly.relayout(screenPlotChartEl, {
+                width: w,
+                height: screenEnrichmentPlotHeight,
+                autosize: false,
+            });
+        } catch (e) {}
+    };
+
+    function scheduleScreenEnrichmentReload() {
+        if (screenEnrichmentReloadTimer) clearTimeout(screenEnrichmentReloadTimer);
+        screenEnrichmentReloadTimer = setTimeout(function () {
+            screenEnrichmentPlotLoaded = false;
+            window.ensureScreenEnrichmentPlotLoaded(true);
+        }, 250);
+    }
 
     function showScreenPlotOverlay() {
         if (!screenPlotOverlay) return;
@@ -1011,15 +1109,9 @@ document.addEventListener("DOMContentLoaded", function() {
         screenPlotOverlay.setAttribute('aria-hidden', 'true');
     }
 
-    function setScreenPlotButton(text, disabled) {
-        if (!screenPlotBtn) return;
-        screenPlotBtn.textContent = text;
-        screenPlotBtn.disabled = disabled;
-        if (disabled) {
-            screenPlotBtn.setAttribute('aria-disabled', 'true');
-        } else {
-            screenPlotBtn.removeAttribute('aria-disabled');
-        }
+    function setScreenPlotRetryVisible(visible) {
+        if (!screenPlotRetryBtn) return;
+        screenPlotRetryBtn.hidden = !visible;
     }
 
     const stageLabels = {
@@ -1046,25 +1138,25 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function applyScreenLoadStatus(data, pollIndex) {
         if (data.parseError) {
-            setScreenPlotButton('Loading screen data… (waiting for server)', true);
+            setScreenPlotRetryVisible(false);
             if (screenPlotStatusEl) {
                 screenPlotStatusEl.textContent = 'Could not read load status (HTTP ' + data.httpStatus + '). Retrying…';
             }
             return 'retry';
         }
         if (data.error) {
-            setScreenPlotButton('Retry loading screen data', false);
+            setScreenPlotRetryVisible(true);
             if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Screen data failed: ' + data.error;
             return 'error';
         }
         if (data.ready) {
-            setScreenPlotButton('Preparing enrichment plots…', true);
+            setScreenPlotRetryVisible(false);
             if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Screen data ready. Building plots in background…';
             return 'ready';
         }
         const stage = stageLabels[data.stage] || data.stage || 'tables';
         const elapsed = typeof data.elapsed_sec === 'number' ? data.elapsed_sec : (pollIndex * 2);
-        setScreenPlotButton('Loading screen data… (' + stage + ')', true);
+        setScreenPlotRetryVisible(false);
         if (screenPlotStatusEl) {
             screenPlotStatusEl.textContent = 'Loading screen data — step: ' + stage
                 + ' (' + Math.floor(elapsed / 60) + 'm ' + (elapsed % 60) + 's elapsed, first load ~4 min)';
@@ -1081,7 +1173,7 @@ document.addEventListener("DOMContentLoaded", function() {
             if (state === 'error') return false;
             await new Promise(r => setTimeout(r, 2000));
         }
-        setScreenPlotButton('Refresh page to retry', false);
+        setScreenPlotRetryVisible(true);
         if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Screen data is still loading. Refresh the page in a minute.';
         return false;
     }
@@ -1103,15 +1195,36 @@ document.addEventListener("DOMContentLoaded", function() {
                 continue;
             }
             if (data.figure_error) {
+                setScreenPlotRetryVisible(true);
                 if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Plot preparation failed: ' + data.figure_error;
                 return false;
             }
+            if (data.ready && !data.loading) {
+                screenEnrichmentDataReady = true;
+            }
             if (data.figure_ready) {
-                setScreenPlotButton('Show screen enrichment plots', false);
-                if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Screen enrichment plots ready.';
+                screenEnrichmentFigureReady = true;
+                screenEnrichmentDataReady = true;
+                setScreenPlotRetryVisible(false);
+                if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Screen enrichment plots ready — expand the section to view.';
+                if (screenEnrichmentPicker) screenEnrichmentPicker.hidden = false;
+                if (screenEnrichmentPanel && !screenEnrichmentPanel.hasAttribute('hidden')) {
+                    window.ensureScreenEnrichmentPlotLoaded();
+                }
                 return true;
             }
-            setScreenPlotButton('Preparing enrichment plots…', true);
+            if (data.ready && !data.loading && !data.figure_building) {
+                // Store ready: allow on-demand builds even before the full-figure cache finishes.
+                screenEnrichmentDataReady = true;
+                if (screenEnrichmentPicker) screenEnrichmentPicker.hidden = false;
+                if (screenPlotStatusEl && !data.figure_ready) {
+                    screenPlotStatusEl.textContent = 'Screen data ready — expand the section to view plots.';
+                }
+                if (screenEnrichmentPanel && !screenEnrichmentPanel.hasAttribute('hidden')) {
+                    window.ensureScreenEnrichmentPlotLoaded();
+                }
+            }
+            setScreenPlotRetryVisible(false);
             if (screenPlotStatusEl) {
                 if (!data.ready || data.loading) {
                     screenPlotStatusEl.textContent = 'Waiting for screen data…';
@@ -1123,9 +1236,95 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             await new Promise(r => setTimeout(r, 2000));
         }
+        setScreenPlotRetryVisible(true);
         if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Plot preparation is taking longer than expected. Try again in a minute.';
         return false;
     }
+
+    window.ensureScreenEnrichmentPlotLoaded = async function ensureScreenEnrichmentPlotLoaded(force) {
+        if (!screenPlotAvailable || !screenPlotChartEl) return;
+        if (screenEnrichmentPlotLoading) return;
+        if (screenEnrichmentPlotLoaded && !force) return;
+        if (!screenEnrichmentDataReady && !screenEnrichmentFigureReady) {
+            if (screenPlotStatusEl) {
+                screenPlotStatusEl.textContent = 'Plots are still preparing — they will appear here when ready.';
+            }
+            return;
+        }
+        const sel = getSelectedEnrichmentPanels();
+        if (!sel.panels.length && !sel.includeDomains && !sel.includeGuides) {
+            if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Select at least one panel to display.';
+            return;
+        }
+        screenEnrichmentPlotLoading = true;
+        showScreenPlotOverlay();
+        try {
+            const body = new URLSearchParams({ uniprot_id: screenUniprotId });
+            if (screenCsrf) body.append('csrfmiddlewaretoken', screenCsrf);
+            appendEnrichmentPanelParams(body);
+            const resp = await fetch('{% url "screen_enrichment_plot" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': screenCsrf,
+                },
+                body: body.toString(),
+                credentials: 'same-origin',
+            });
+            const respText = await resp.text();
+            let data;
+            try {
+                data = JSON.parse(respText);
+            } catch (parseErr) {
+                if (screenPlotStatusEl) {
+                    screenPlotStatusEl.textContent = resp.status === 504
+                        ? 'Server timed out (504). Wait a moment, then expand again.'
+                        : 'Server returned a non-JSON response (HTTP ' + resp.status + ').';
+                }
+                setScreenPlotRetryVisible(true);
+                return;
+            }
+            if (resp.status === 202 && (data.loading || data.building)) {
+                screenEnrichmentDataReady = false;
+                if (screenPlotStatusEl) {
+                    screenPlotStatusEl.textContent = data.reason || 'Screen plots are still being prepared…';
+                }
+                return;
+            }
+            if (!resp.ok || !data.available) {
+                if (screenPlotStatusEl) screenPlotStatusEl.textContent = data.reason || 'Screen plot unavailable.';
+                setScreenPlotRetryVisible(true);
+                return;
+            }
+            const layout = Object.assign({}, data.figure.layout || {});
+            screenEnrichmentPlotHeight = layout.height || 1500;
+            layout.height = screenEnrichmentPlotHeight;
+            layout.autosize = false;
+            const innerW = enrichmentChartInnerWidth();
+            if (innerW > 0) layout.width = innerW;
+            screenPlotChartEl.style.minHeight = screenEnrichmentPlotHeight + 'px';
+            await Plotly.newPlot(screenPlotChartEl, data.figure.data, layout, {
+                responsive: false,
+                displayModeBar: false,
+            });
+            screenEnrichmentPlotLoaded = true;
+            if (screenEnrichmentPicker) screenEnrichmentPicker.hidden = false;
+            const n = (data.panels || sel.panels).length
+                + (data.include_domains || sel.includeDomains ? 1 : 0)
+                + (data.include_guides || sel.includeGuides ? 1 : 0);
+            if (screenPlotStatusEl) {
+                screenPlotStatusEl.textContent = 'Showing ' + n + ' panel' + (n === 1 ? '' : 's') + '.';
+            }
+            setScreenPlotRetryVisible(false);
+            window.fixScreenEnrichmentPlotSize();
+        } catch (err) {
+            if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Failed to load screen plots: ' + err;
+            setScreenPlotRetryVisible(true);
+        } finally {
+            screenEnrichmentPlotLoading = false;
+            hideScreenPlotOverlay();
+        }
+    };
 
     async function loadOverviewChart(refreshColors) {
         if (!screenOverviewChart) return;
@@ -1221,6 +1420,8 @@ document.addEventListener("DOMContentLoaded", function() {
         const initial = await fetchScreenLoadStatus();
         const initialState = applyScreenLoadStatus(initial, 0);
         if (initialState === 'ready') {
+            screenEnrichmentDataReady = true;
+            if (screenEnrichmentPicker) screenEnrichmentPicker.hidden = false;
             if (screenOverviewChart) loadOverviewChart(true).catch(() => {});
             startFullFigurePolling();
             return;
@@ -1236,18 +1437,25 @@ document.addEventListener("DOMContentLoaded", function() {
             credentials: 'same-origin',
         }).catch(() => {});
         const ready = await pollScreenPlotReady();
+        if (ready) {
+            screenEnrichmentDataReady = true;
+            if (screenEnrichmentPicker) screenEnrichmentPicker.hidden = false;
+        }
         if (ready && screenOverviewChart) loadOverviewChart(true).catch(() => {});
         if (ready) {
             startFullFigurePolling();
         }
     }
 
-    if (screenPlotBtn && screenPlotAvailable) {
+    if (screenPlotAvailable) {
         bootstrapScreenPlots();
-        screenPlotBtn.addEventListener('click', async () => {
-            if (screenPlotBtn.disabled) return;
-            if (screenPlotBtn.textContent === 'Retry loading screen data') {
-                setScreenPlotButton('Loading screen data…', true);
+        if (screenPlotRetryBtn) {
+            screenPlotRetryBtn.addEventListener('click', async () => {
+                setScreenPlotRetryVisible(false);
+                screenEnrichmentFigureReady = false;
+                screenEnrichmentDataReady = false;
+                screenEnrichmentPlotLoaded = false;
+                if (screenPlotStatusEl) screenPlotStatusEl.textContent = 'Retrying screen data load…';
                 await fetch('{% url "screen_plot_warmup" %}', {
                     method: 'POST',
                     headers: {
@@ -1259,70 +1467,36 @@ document.addEventListener("DOMContentLoaded", function() {
                 });
                 const ok = await pollScreenPlotReady();
                 if (ok) {
+                    screenEnrichmentDataReady = true;
+                    if (screenEnrichmentPicker) screenEnrichmentPicker.hidden = false;
                     startFullFigurePolling();
                 }
-                return;
-            }
-            const panel = document.getElementById('screen-plot-panel');
-            const toggle = document.getElementById('screen-plot-panel-toggle');
-            const chartEl = document.getElementById('screen-plot-chart');
-
-            screenPlotBtn.disabled = true;
-            screenPlotBtn.setAttribute('aria-disabled', 'true');
-            showScreenPlotOverlay();
-
-            try {
-                const body = new URLSearchParams({ uniprot_id: screenUniprotId });
-                if (screenCsrf) body.append('csrfmiddlewaretoken', screenCsrf);
-                const resp = await fetch('{% url "screen_enrichment_plot" %}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': screenCsrf,
-                    },
-                    body: body.toString(),
-                    credentials: 'same-origin',
-                });
-                const respText = await resp.text();
-                let data;
-                try {
-                    data = JSON.parse(respText);
-                } catch (parseErr) {
-                    if (resp.status === 504) {
-                        alert('Server timed out (504). Wait until screen data is ready, then try again.');
-                    } else {
-                        alert('Server returned a non-JSON response (HTTP ' + resp.status + ').');
-                    }
-                    return;
-                }
-                if (resp.status === 202 && (data.loading || data.building)) {
-                    alert(data.reason || 'Screen plots are still being prepared. Wait until the status says ready, then try again.');
-                    return;
-                }
-                if (!resp.ok || !data.available) {
-                    alert(data.reason || 'Screen plot unavailable.');
-                    return;
-                }
-                panel.hidden = false;
-                toggle.hidden = false;
-                Plotly.newPlot(chartEl, data.figure.data, data.figure.layout, { responsive: true });
-            } catch (err) {
-                alert('Failed to load screen plots: ' + err);
-            } finally {
-                screenPlotBtn.disabled = false;
-                screenPlotBtn.removeAttribute('aria-disabled');
-                hideScreenPlotOverlay();
-            }
-        });
+            });
+        }
+        document.querySelectorAll('.screen-enrichment-lfc, #screen-enrichment-domains, #screen-enrichment-guides')
+            .forEach(function (el) {
+                el.addEventListener('change', scheduleScreenEnrichmentReload);
+            });
+        const selectAllBtn = document.getElementById('screen-enrichment-select-all');
+        const clearLfcBtn = document.getElementById('screen-enrichment-clear-lfc');
+        if (selectAllBtn) {
+            selectAllBtn.addEventListener('click', function () {
+                document.querySelectorAll('.screen-enrichment-lfc').forEach(function (el) { el.checked = true; });
+                const domains = document.getElementById('screen-enrichment-domains');
+                const guides = document.getElementById('screen-enrichment-guides');
+                if (domains) domains.checked = true;
+                if (guides) guides.checked = true;
+                scheduleScreenEnrichmentReload();
+            });
+        }
+        if (clearLfcBtn) {
+            clearLfcBtn.addEventListener('click', function () {
+                document.querySelectorAll('.screen-enrichment-lfc').forEach(function (el) { el.checked = false; });
+                scheduleScreenEnrichmentReload();
+            });
+        }
     }
 });
-
-function toggleScreenPlotPanel(btn) {
-    const panel = document.getElementById('screen-plot-panel');
-    if (!panel) return;
-    panel.hidden = !panel.hidden;
-    btn.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
-}
 
 function downloadTableAsCSV() {
     const table = document.getElementById('guide-results-table') || document.querySelector('.results-table');
@@ -1534,11 +1708,10 @@ th.sortable:hover { background-color: var(--sortable-hover, #eee); }
     font-size: 1rem;
     color: #333;
 }
-.screen-plot-panel { margin-top: 16px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa; }
 .screen-plot-unavailable { color: #666; }
 .screen-plot-lookup-note { font-size: 0.9em; opacity: 0.85; }
 .screen-plot-status-msg { margin: 8px 0 0 0; font-style: italic; }
-#screen-plot-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+#screen-plot-retry-btn { margin: 8px 0 12px; }
 .screen-overview-chart {
     width: 100%;
     max-width: 100%;
@@ -1554,6 +1727,58 @@ th.sortable:hover { background-color: var(--sortable-hover, #eee); }
 .screen-overview-chart .js-plotly-plot,
 .screen-overview-chart .plot-container,
 .screen-overview-chart .svg-container {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+.screen-enrichment-picker {
+    margin: 12px 0 10px;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--border-subtle, #ddd);
+    border-radius: 12px;
+    background: var(--summary-item-bg, #f8fafc);
+}
+.screen-enrichment-picker-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem 0.85rem;
+    margin-bottom: 0.45rem;
+}
+.screen-enrichment-picker-row:last-of-type { margin-bottom: 0; }
+.screen-enrichment-picker-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    opacity: 0.75;
+    min-width: 6.5rem;
+}
+.screen-enrichment-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.86rem;
+    cursor: pointer;
+    user-select: none;
+}
+.screen-enrichment-picker-hint { margin: 0.35rem 0 0; font-size: 0.82rem; }
+.screen-enrichment-section {
+    overflow: hidden;
+    max-width: 100%;
+}
+.screen-enrichment-chart {
+    width: 100%;
+    max-width: 100%;
+    min-height: 360px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 8px;
+    background: #fafafa;
+    box-sizing: border-box;
+    overflow: hidden;
+    position: relative;
+}
+.screen-enrichment-chart .js-plotly-plot,
+.screen-enrichment-chart .plot-container,
+.screen-enrichment-chart .svg-container {
     width: 100% !important;
     max-width: 100% !important;
 }

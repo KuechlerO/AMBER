@@ -38,13 +38,13 @@
                         type="text"
                         id="uniprot_id"
                         name="uniprot_id"
-                        placeholder="e.g. P04439 or HLA-A"
+                        placeholder="e.g. P60709 or ACTB"
                         required
                     >
                     <button type="button" class="btn-form-aux" id="gene-lookup-btn" title="Look up UniProt accessions for a gene symbol">
                         Look up gene
                     </button>
-                    <button type="button" class="btn-form-aux" id="example-btn" title="Fill with example UniProt ID (HLA-A)">
+                    <button type="button" class="btn-form-aux" id="example-btn" title="Fill with example UniProt ID (ACTB / P60709)">
                         Example
                     </button>
                 </div>
@@ -192,25 +192,24 @@
         <div class="form-group" style="margin-top: 1.15rem;">
             <label>Guide RNAs at multiple positions</label>
             <div class="column-picker mode-picker">
-                <label class="column-picker-item">
+                <label class="column-picker-item"
+                       title="Keep only guides that map to a single amino-acid position. Multi-site guides are removed entirely.">
                     <input type="radio" name="duplicate_mode" value="unique">
                     <span>Only uniquely mapping guides</span>
                 </label>
-                <label class="column-picker-item">
+                <label class="column-picker-item"
+                       title="For each guide sequence, keep one row at its best position (highest AlphaMissense score; ties go to the lower residue number). Multi-site guides get a ×N badge.">
                     <input type="radio" name="duplicate_mode" value="best" checked>
                     <span>Best position per guide</span>
                 </label>
-                <label class="column-picker-item">
+                <label class="column-picker-item"
+                       title="Show every position a guide maps to. Rows with the same sequence are grouped; a ×N badge marks multi-site guides. Row colours appear when two or more of those rows are visible.">
                     <input type="radio" name="duplicate_mode" value="group">
                     <span>All occurrences, grouped</span>
                 </label>
             </div>
             <small class="help-text">
-                The same guide sequence can edit more than one amino-acid position.
-                Uniquely mapping guides appear at a single position only.
-                Multi-site guides get a <strong>×N</strong> badge (N = number of positions).
-                Row colours in grouped mode only appear when two or more rows with the same guide are visible
-                (e.g. score filters may hide partners).
+                Hover an option for details. The same guide can edit more than one residue.
             </small>
         </div>
 
@@ -248,7 +247,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const uniprotInput = document.getElementById("uniprot_id");
     if (exampleBtn && uniprotInput) {
         exampleBtn.addEventListener("click", function () {
-            uniprotInput.value = "P04439";
+            uniprotInput.value = "P60709";
             uniprotInput.focus();
             var note = document.getElementById("gene-picker-selected");
             if (note) note.hidden = true;

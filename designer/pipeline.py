@@ -1120,6 +1120,15 @@ def flatten_candidate_dataframe(results_df, editor_mode, top_sgrnas):
 # ===========================
 # run whole pipeline
 # ===========================
+def _pipeline_progress(progress_callback, stage: str, message: str) -> None:
+    if progress_callback is None:
+        return
+    try:
+        progress_callback(stage, message)
+    except Exception:  # noqa: BLE001 — never fail the job on UI progress
+        pass
+
+
 def run_pipeline(
     uniprot_id,
     editor,
@@ -1130,10 +1139,17 @@ def run_pipeline(
     pam_type='NGG',
     *,
     include_cadd=False,
+    progress_callback=None,
 ):
     """Design guides. CADD is deferred by default (include_cadd=False) for faster first paint."""
 
     from .precomputed_guides import try_load_precomputed_guides
+
+    _pipeline_progress(
+        progress_callback,
+        'precomputed',
+        'Checking for precomputed guides… (source: AMBER cache)',
+    )
 
     input_was_ensembl = uniprot_id.startswith('ENST')
     lookup_id = uniprot_id
@@ -1153,12 +1169,22 @@ def run_pipeline(
         include_cadd=include_cadd,
     )
     if precomputed is not None:
+        _pipeline_progress(
+            progress_callback,
+            'precomputed',
+            'Loaded precomputed guides. (source: AMBER cache)',
+        )
         return precomputed
 
     transcript_id = ''
     cds = ''
     gene_symbol = None
 
+    _pipeline_progress(
+        progress_callback,
+        'sequence',
+        'Fetching coding sequence… (source: Ensembl)',
+    )
     if input_was_ensembl:
         transcript_id = uniprot_id
         uniprot_id = ensembl_to_uniprot(transcript_id)
@@ -1173,6 +1199,11 @@ def run_pipeline(
         cds, transcript_id, gene_symbol = get_cds_and_transcript_from_uniprot(uniprot_id)
         print(transcript_id)
 
+    _pipeline_progress(
+        progress_callback,
+        'alphamissense',
+        'Loading AlphaMissense scores… (source: AlphaMissense)',
+    )
     threshold = float(alpha_threshold)
     patho_df = get_alphamissense_from_db(uniprot_id, threshold)
     if patho_df is None or patho_df.empty:
@@ -1188,6 +1219,11 @@ def run_pipeline(
             f'No AlphaMissense variants for {uniprot_id} meet the score threshold '
             f'({threshold}). Lower the AlphaMissense threshold on the home page and try again.'
         )
+    _pipeline_progress(
+        progress_callback,
+        'exons',
+        'Mapping exon boundaries… (source: Ensembl)',
+    )
     exon_data = get_exon_boundaries(transcript_id, len(cds))
 
     all_rows = []
@@ -1198,6 +1234,11 @@ def run_pipeline(
     )
 
     if editor in ('ABE', 'BOTH'):
+        _pipeline_progress(
+            progress_callback,
+            'abe',
+            'Designing ABE guides… (source: AMBER)',
+        )
         df_abe = generate_candidates(
             cds, patho_df, 'ABE', threshold, transcript_id, window_min, window_max,
             pam_type=pam_type, **gen_kwargs,
@@ -1205,6 +1246,11 @@ def run_pipeline(
         all_rows.extend(flatten_candidate_dataframe(df_abe, 'ABE', top_sgrnas))
 
     if editor in ('CBE', 'BOTH'):
+        _pipeline_progress(
+            progress_callback,
+            'cbe',
+            'Designing CBE guides… (source: AMBER)',
+        )
         df_cbe = generate_candidates(
             cds, patho_df, 'CBE', threshold, transcript_id, window_min, window_max,
             pam_type=pam_type, **gen_kwargs,
@@ -1220,6 +1266,11 @@ def run_pipeline(
         and pd.notna(r.get('alpha_score'))
     ]
 
+    _pipeline_progress(
+        progress_callback,
+        'scoring',
+        'Finalizing guide scores… (source: AMBER)',
+    )
     cadd_warning = None
     cadd_status = 'skipped'
     if include_cadd:

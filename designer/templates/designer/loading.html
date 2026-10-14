@@ -5,12 +5,15 @@
 
     <h2>Running Analysis</h2>
 
-    <p id="loading-status" style="margin-top: 10px;">
-        Your guide RNA candidates are being generated.<br>
+    <p id="loading-detail" class="help-text" style="margin-top: 10px;">
         AlphaMissense ranking runs first; CADD scores continue in the background.
     </p>
 
-    <div class="spinner-modern"></div>
+    <div class="spinner-modern" style="margin-top: 24px;"></div>
+
+    <p id="loading-status" style="margin-top: 16px; color: #b91c1c; font-weight: 500;">
+        Starting analysis… (source: AMBER)
+    </p>
 
     <p class="help-text" style="margin-top: 20px;">
         Please keep this tab open. You can safely wait — the analysis runs in the background.
@@ -27,9 +30,10 @@
     var statusUrl = "{% url 'analysis_status' %}";
     var resultsUrl = "{% url 'results' %}";
     var statusEl = document.getElementById('loading-status');
+    var detailEl = document.getElementById('loading-detail');
     var errorEl = document.getElementById('loading-error');
     var errorActions = document.getElementById('loading-error-actions');
-    var pollMs = 2000;
+    var pollMs = 1500;
 
     function poll() {
         fetch(statusUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
@@ -42,12 +46,18 @@
                 }
                 if (status === 'error') {
                     if (statusEl) statusEl.style.display = 'none';
+                    if (detailEl) detailEl.style.display = 'none';
                     if (errorEl) {
-                        errorEl.textContent = data.error || 'Analysis failed.';
+                        errorEl.textContent = data.error || data.message || 'Analysis failed.';
                         errorEl.style.display = 'block';
                     }
                     if (errorActions) errorActions.style.display = 'block';
                     return;
+                }
+                if (statusEl && data.message) {
+                    statusEl.textContent = data.message;
+                } else if (statusEl && status === 'running') {
+                    statusEl.textContent = 'Analysis in progress…';
                 }
                 setTimeout(poll, pollMs);
             })

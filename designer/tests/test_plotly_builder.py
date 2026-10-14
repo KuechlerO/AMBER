@@ -54,12 +54,12 @@ class PlotlyBuilderSmokeTest(TestCase):
         titles = [a.get('text', '') for a in payload['layout'].get('annotations', [])]
         self.assertIn('UniProt domains', titles)
         self.assertTrue(any('ClinVar variants' in (t or '') for t in titles))
-        self.assertFalse(any('AMBER guides' in (t or '') for t in titles))
+        self.assertTrue(any('AMBER guides' in (t or '') for t in titles))
         xaxis3 = payload['layout'].get('xaxis3') or {}
         x_title = xaxis3.get('title')
         if isinstance(x_title, dict):
             x_title = x_title.get('text', '')
-        self.assertIn('AMBER guides', x_title or '')
+        self.assertFalse(x_title and 'AMBER guides' in x_title)
 
     def test_overview_clinvar_markers(self):
         variants = [
@@ -94,6 +94,9 @@ class PlotlyBuilderSmokeTest(TestCase):
         scatter = [t for t in payload['data'] if t.get('type') == 'scatter']
         self.assertEqual(len(scatter), 1)
         self.assertEqual(sorted(scatter[0]['x']), [2, 2])
+        self.assertEqual(sorted(scatter[0]['y']), [1, 2])
+        yaxis2 = payload['layout'].get('yaxis2') or {}
+        self.assertEqual(yaxis2.get('tickvals'), [2])
         colors = scatter[0]['marker']['color']
         self.assertIn('#b91c1c', colors)
         self.assertIn('#2563eb', colors)
@@ -121,17 +124,35 @@ class PlotlyBuilderSmokeTest(TestCase):
         fig = build_full_screen_figure('TESTGENE', guide_positions=[1], store=self._mock_store())
         payload = json.loads(fig.to_json())
         titles = [a.get('text', '') for a in payload['layout'].get('annotations', [])]
-        self.assertEqual(len(titles), 9)
+        self.assertEqual(len(titles), 10)
         self.assertTrue(any('TNFa ABE LFC' in t for t in titles))
         self.assertIn('UniProt domains', titles)
-        self.assertFalse(any('AMBER guides' in (t or '') for t in titles))
+        self.assertTrue(any('AMBER guides' in (t or '') for t in titles))
         self.assertFalse(any('log(p)' in t for t in titles))
         self.assertFalse(any('effect size' in t for t in titles))
         xaxis10 = payload['layout'].get('xaxis10') or {}
         x_title = xaxis10.get('title')
         if isinstance(x_title, dict):
             x_title = x_title.get('text', '')
-        self.assertIn('AMBER guides', x_title or '')
+        self.assertFalse(x_title and 'AMBER guides' in x_title)
+
+    def test_full_screen_subset_panels(self):
+        fig = build_full_screen_figure(
+            'TESTGENE',
+            guide_positions=[1],
+            store=self._mock_store(),
+            lfc_panels=[('TNFa', 'ABE'), ('PD1', 'CBE')],
+            include_domains=False,
+            include_guides=True,
+        )
+        payload = json.loads(fig.to_json())
+        titles = [a.get('text', '') for a in payload['layout'].get('annotations', [])]
+        self.assertEqual(len(titles), 3)
+        self.assertTrue(any('TNFa ABE LFC' in (t or '') for t in titles))
+        self.assertTrue(any('PD1 CBE LFC' in (t or '') for t in titles))
+        self.assertFalse(any('UniProt domains' in (t or '') for t in titles))
+        self.assertTrue(any('AMBER guides' in (t or '') for t in titles))
+        self.assertFalse(any('IFNG' in (t or '') for t in titles))
 
     def test_guide_overlap_colors(self):
         store = self._mock_store()
@@ -186,14 +207,18 @@ class PlotlyBuilderSmokeTest(TestCase):
         scatter = [t for t in payload['data'] if t.get('type') == 'scatter']
         self.assertEqual(len(scatter), 1)
         self.assertTrue(all(y >= 0 for y in scatter[0]['y']))
-        self.assertAlmostEqual(scatter[0]['y'][0], 1.0 / 16)  # lane 0 mid of 8 lanes
-        for key in ('yaxis', 'yaxis1', 'yaxis2', 'yaxis3'):
+        self.assertEqual(scatter[0]['y'][0], 1)  # first entry = count 1
+        # Domains + guides stay on [0, 1]; ClinVar uses entry-count scale.
+        for key in ('yaxis', 'yaxis1', 'yaxis3'):
             axis = payload['layout'].get(key)
             if not axis:
                 continue
             yr = axis.get('range')
             if yr:
                 self.assertEqual(yr, [0, 1])
+        yaxis2 = payload['layout'].get('yaxis2') or {}
+        self.assertEqual(yaxis2.get('range'), [0.5, 1.5])
+        self.assertEqual(yaxis2.get('tickvals'), [1])
 
     def test_overview_guide_heights_from_am_scores(self):
         fig = build_overview_figure(

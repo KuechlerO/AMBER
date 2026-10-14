@@ -2,7 +2,7 @@
 
 {% load static %}
 <!DOCTYPE html>
-<html lang="de" data-theme="amber">
+<html lang="de" data-theme="scientific">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -36,8 +36,8 @@
                 <div class="theme-switcher" role="group" aria-label="Color theme">
                     <span class="theme-switcher-label">Theme</span>
                     <button type="button" class="theme-option" data-theme="green" aria-pressed="false" title="Original green design">Classic</button>
-                    <button type="button" class="theme-option theme-option-active" data-theme="amber" aria-pressed="true" title="Dark amber design">Amber</button>
-                    <button type="button" class="theme-option" data-theme="scientific" aria-pressed="false" title="Clean lab-style design">Lab</button>
+                    <button type="button" class="theme-option" data-theme="amber" aria-pressed="false" title="Dark amber design">Amber</button>
+                    <button type="button" class="theme-option theme-option-active" data-theme="scientific" aria-pressed="true" title="Clean lab-style design">Lab</button>
                 </div>
                 <nav class="site-nav">
                     <a href="{% url 'home' %}" class="nav-btn {% if request.resolver_match.url_name == 'home' %}nav-btn-active{% endif %}">Home</a>
@@ -53,7 +53,7 @@
     <script>
         (function () {
             var STORAGE_KEY = 'amber-theme';
-            var DEFAULT_THEME = 'amber';
+            var DEFAULT_THEME = 'scientific';
             var VALID = { green: 1, amber: 1, scientific: 1 };
 
             function applyTheme(theme) {

@@ -64,7 +64,17 @@ def is_valid_ensembl_id(ensembl_id: str) -> bool:
 
 # analysis pipeline
 
-def run_analysis(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, window_max, duplicate_mode='hide', pam_type='NGG'):
+def run_analysis(
+    uniprot_id,
+    editor,
+    alpha_threshold,
+    top_sgrnas,
+    window_min,
+    window_max,
+    duplicate_mode='hide',
+    pam_type='NGG',
+    progress_callback=None,
+):
     uniprot_id = normalize_input_id(uniprot_id)
     print('RUN ANALYSIS')
     print('UniProt ID:', uniprot_id)
@@ -121,6 +131,7 @@ def run_analysis(uniprot_id, editor, alpha_threshold, top_sgrnas, window_min, wi
             window_min=window_min,
             window_max=window_max,
             pam_type=pam_type,
+            progress_callback=progress_callback,
         )
 
     except FileNotFoundError as e:

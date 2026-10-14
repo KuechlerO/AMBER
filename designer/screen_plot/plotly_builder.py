@@ -143,12 +143,14 @@ def _set_track_yaxis(
     *,
     title: str,
     showticklabels: bool = False,
+    y_range: tuple[float, float] = (0, 1),
+    tickvals: list[float] | None = None,
 ) -> None:
-    """Shared y-axis chrome for overview protein-map tracks (range [0, 1])."""
+    """Shared y-axis chrome for overview protein-map tracks."""
     kwargs = dict(
         title_text=title,
         title_font=dict(size=11),
-        range=[0, 1],
+        range=list(y_range),
         showticklabels=showticklabels,
         visible=True,
         zeroline=False,
@@ -157,7 +159,12 @@ def _set_track_yaxis(
         col=1,
     )
     if showticklabels:
-        kwargs.update(tickvals=[0, 0.5, 1], tickfont=dict(size=9))
+        kwargs['tickfont'] = dict(size=9)
+        if tickvals is not None:
+            kwargs['tickvals'] = tickvals
+            kwargs['ticktext'] = [str(int(v) if float(v).is_integer() else v) for v in tickvals]
+        elif y_range == (0, 1):
+            kwargs['tickvals'] = [0, 0.5, 1]
     fig.update_yaxes(**kwargs)
 
 
@@ -279,28 +286,27 @@ def _add_clinvar_track(
     *,
     empty_message: str | None = None,
 ) -> None:
-    _set_track_yaxis(fig, clinvar_row, title='# entries')
+    variants = list(clinvar_variants or [])
+    assigned = _assign_clinvar_lanes(variants) if variants else []
+    max_count = max((lane + 1 for _, lane, _ in assigned), default=1)
+    y_top = max(max_count, 1) + 0.5
+    # Label every 2nd count (2, 4, …); keep a single tick when max is 1.
+    tickvals = list(range(2, max_count + 1, 2)) or ([1] if max_count >= 1 else [])
+    _set_track_yaxis(
+        fig,
+        clinvar_row,
+        title='# entries',
+        showticklabels=True,
+        y_range=(0.5, y_top),
+        tickvals=tickvals,
+    )
     fig.update_xaxes(range=[plt_range[0] - 1, plt_range[1] + 1], row=clinvar_row, col=1)
 
-    variants = list(clinvar_variants or [])
-    if not variants:
-        fig.add_annotation(
-            text=empty_message or 'No ClinVar protein variants mapped',
-            x=(plt_range[0] + plt_range[1]) / 2,
-            y=0.5,
-            showarrow=False,
-            font=dict(size=11, color='#666'),
-            row=clinvar_row,
-            col=1,
-        )
-        return
-
-    assigned = _assign_clinvar_lanes(variants)
     if not assigned:
         fig.add_annotation(
             text=empty_message or 'No ClinVar protein variants mapped',
             x=(plt_range[0] + plt_range[1]) / 2,
-            y=0.5,
+            y=(0.5 + y_top) / 2,
             showarrow=False,
             font=dict(size=11, color='#666'),
             row=clinvar_row,
@@ -308,12 +314,11 @@ def _add_clinvar_track(
         )
         return
 
-    lane_height = 1.0 / max(_CLINVAR_MAX_LANES, 1)
     xs, ys, colors, hovers, customdata = [], [], [], [], []
     for variant, lane, overflow in assigned:
         residue = int(variant['residue'])
-        # Grounded at bottom; lane stacking only — not pathogenicity.
-        y = lane_height * (lane + 0.5)
+        # 1-indexed entry count for stacked ClinVar ticks at this residue.
+        y = lane + 1
         xs.append(residue)
         ys.append(y)
         colors.append(_clinvar_color(variant.get('classification')))
@@ -546,9 +551,9 @@ def build_overview_figure(
         rows=3,
         cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.08,
-        row_heights=[0.40, 0.30, 0.30],
-        subplot_titles=['UniProt domains', clinvar_title, None],
+        vertical_spacing=0.14,
+        row_heights=[1, 1, 1],
+        subplot_titles=['UniProt domains', clinvar_title, guide_title],
     )
 
     _add_domain_track(fig, domain_layout or [], 1, plt_range, pro_len)
@@ -571,25 +576,43 @@ def build_overview_figure(
         y_axis_title='AM score',
     )
 
-    # Title under the guide track so it does not overlap the ClinVar subplot above.
-    fig.update_xaxes(title_text=guide_title, title_font=dict(size=12), row=3, col=1)
     fig.update_xaxes(range=[plt_range[0] - 1, plt_range[1] + 1], row=1, col=1)
     fig.update_layout(
         title=f'{gene} — protein map',
-        height=380,
+        height=560,
         autosize=True,
         showlegend=False,
-        margin=dict(l=70, r=20, t=50, b=55),
+        margin=dict(l=70, r=20, t=55, b=40),
     )
     return fig
+
+
+def default_lfc_panels() -> list[tuple[str, str]]:
+    """All marker × editor LFC panels in display order."""
+    return [(marker, be_type) for marker in SCREEN_MARKERS for be_type in BE_TYPES]
+
+
+def parse_lfc_panel_key(key: str) -> tuple[str, str] | None:
+    """Parse 'TNFa_ABE' → ('TNFa', 'ABE')."""
+    raw = (key or '').strip()
+    if '_' not in raw:
+        return None
+    marker, be_type = raw.rsplit('_', 1)
+    if marker not in SCREEN_MARKERS or be_type not in BE_TYPES:
+        return None
+    return marker, be_type
 
 
 def build_full_screen_figure(
     gene: str,
     guide_positions: list[int] | None = None,
     store: ScreenDataStore | None = None,
+    *,
+    lfc_panels: list[tuple[str, str]] | None = None,
+    include_domains: bool = True,
+    include_guides: bool = True,
 ) -> go.Figure:
-    """All markers × ABE/CBE LFC panels, then domains and colored AMBER guides."""
+    """Selected marker × ABE/CBE LFC panels, optional domains and AMBER guides."""
     store = store or ScreenDataStore.get()
     store.ensure_loaded()
 
@@ -597,50 +620,75 @@ def build_full_screen_figure(
     plt_range = (0, pro_len)
     guide_positions = sorted({int(p) for p in (guide_positions or []) if p is not None})
 
-    lfc_titles = []
-    for marker in SCREEN_MARKERS:
-        for be_type in BE_TYPES:
-            lfc_titles.append(f'{marker} {be_type} LFC')
+    panels = list(lfc_panels) if lfc_panels is not None else default_lfc_panels()
+    valid = []
+    seen = set()
+    for marker, be_type in panels:
+        if marker not in SCREEN_MARKERS or be_type not in BE_TYPES:
+            continue
+        key = (marker, be_type)
+        if key in seen:
+            continue
+        seen.add(key)
+        valid.append(key)
+    panels = valid
+
+    n_rows = len(panels) + int(include_domains) + int(include_guides)
+    if n_rows < 1:
+        raise ValueError('Select at least one enrichment panel to display.')
 
     guide_title = f'AMBER guides ({len(guide_positions)} positions)'
+    subplot_titles = [f'{marker} {be_type} LFC' for marker, be_type in panels]
+    if include_domains:
+        subplot_titles.append('UniProt domains')
+    if include_guides:
+        subplot_titles.append(guide_title)
+
+    # Keep gaps modest; scale height with visible row count.
+    spacing = min(0.045, 0.35 / max(n_rows - 1, 1)) if n_rows > 1 else 0.0
     fig = make_subplots(
-        rows=10,
+        rows=n_rows,
         cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.02,
-        row_heights=[0.1] * 8 + [0.12, 0.1],
-        subplot_titles=lfc_titles + ['UniProt domains', None],
+        vertical_spacing=spacing,
+        row_heights=[1] * n_rows,
+        subplot_titles=subplot_titles,
     )
 
     last_vmin, last_vmax = -0.5, 0.5
     row = 1
-    for marker in SCREEN_MARKERS:
-        for be_type in BE_TYPES:
-            vmin, vmax = _add_lfc_panel(
-                fig,
-                store,
-                gene,
-                marker,
-                be_type,
-                row,
-                plt_range,
-                pro_len,
-                mark_zero_coverage=False,
-            )
-            last_vmin, last_vmax = vmin, vmax
-            row += 1
+    for marker, be_type in panels:
+        vmin, vmax = _add_lfc_panel(
+            fig,
+            store,
+            gene,
+            marker,
+            be_type,
+            row,
+            plt_range,
+            pro_len,
+            mark_zero_coverage=False,
+        )
+        last_vmin, last_vmax = vmin, vmax
+        row += 1
 
-    domain_layout = store.get_structural_domain_layout(gene)
-    _add_domain_track(fig, domain_layout, 9, plt_range, pro_len, last_vmin, last_vmax)
-    _add_guide_track(fig, guide_positions, 10, plt_range, store, gene)
+    if include_domains:
+        domain_layout = store.get_structural_domain_layout(gene)
+        _add_domain_track(fig, domain_layout, row, plt_range, pro_len, last_vmin, last_vmax)
+        row += 1
 
-    fig.update_xaxes(title_text=guide_title, title_font=dict(size=12), row=10, col=1)
+    if include_guides:
+        _add_guide_track(fig, guide_positions, row, plt_range, store, gene)
+
     fig.update_xaxes(range=[plt_range[0] - 1, plt_range[1] + 1], row=1, col=1)
+    fig.update_annotations(font_size=10)
+    height = max(360, 140 * n_rows + 100)
     fig.update_layout(
-        title=f'{gene} — screen enrichment (LFC, all markers)',
-        height=1120,
+        title=f'{gene} — screen enrichment (LFC)',
+        height=height,
+        autosize=False,
         showlegend=False,
-        margin=dict(l=60, r=20, t=60, b=55),
+        margin=dict(l=60, r=20, t=60, b=40),
         barmode='overlay',
     )
     return fig
